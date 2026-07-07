@@ -24,6 +24,12 @@ export function createStore<T>(initial: T): Store<T> {
 
 export function useStore<T>(store: Store<T>): T {
   const [, force] = useReducer((x: number) => x + 1, 0);
-  useEffect(() => store.subscribe(() => force(0)), [store]);
-  return store.get();
+  const rendered = store.get();
+  useEffect(() => {
+    const unsub = store.subscribe(() => force(0));
+    // Catch changes that happened between render and effect registration.
+    if (store.get() !== rendered) force(0);
+    return unsub;
+  }, [store, rendered]);
+  return rendered;
 }

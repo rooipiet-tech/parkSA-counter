@@ -122,8 +122,8 @@ label {
 }
 
 .tile-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.6rem;
 }
 
@@ -132,6 +132,8 @@ label {
   border: 1px solid #34435a;
   border-radius: 12px;
   min-height: 110px;
+  flex: 1 1 150px;
+  max-width: 240px;
   display: flex;
   flex-direction: column;
   align-items: center;

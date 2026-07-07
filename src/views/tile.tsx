@@ -31,7 +31,10 @@ export function Tile({
     activePointer.current = e.pointerId;
     const n = onTap(provider.id); // synchronous enqueue
     btnRef.current?.classList.add('pressed');
-    if (countRef.current) countRef.current.textContent = String(n);
+    // Mutate the existing text node's value (never replace the node itself —
+    // Preact keeps a reference to it and must stay in control of the DOM).
+    const textNode = countRef.current?.firstChild;
+    if (textNode) textNode.nodeValue = String(n);
   };
 
   const release = (e: PointerEvent) => {
