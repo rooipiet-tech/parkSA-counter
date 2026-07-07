@@ -1,0 +1,20 @@
+name = "parksa-counter-api"
+main = "worker/index.ts"
+compatibility_date = "2024-11-01"
+
+# D1 (SQLite) binding. Paste the database_id returned by
+# `wrangler d1 create parksa` into database_id below before deploying.
+[[d1_databases]]
+binding = "DB"
+database_name = "parksa"
+database_id = "REPLACE_WITH_d1_create_output"
+migrations_dir = "worker/migrations"
+
+[vars]
+# CORS origin allow-list. Set to your Vercel deployment origin in production,
+# e.g. "https://parksa-counter.vercel.app". Defaults to "*" if unset.
+ALLOWED_ORIGIN = "*"
+
+# PARKSA_PIN is a SECRET — do NOT put it here. Set it with:
+#   wrangler secret put PARKSA_PIN
+# and enter the same value used for the client's VITE_API_PIN (e.g. 1234).

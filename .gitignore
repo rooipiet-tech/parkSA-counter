@@ -1,1 +1,9 @@
 .loop/
+node_modules/
+dist/
+dev-dist/
+test-results/
+playwright-report/
+.wrangler/
+.env
+.env.*.local
