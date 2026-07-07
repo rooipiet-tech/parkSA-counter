@@ -81,6 +81,31 @@ Vercel origin (default `*`) and redeploy the Worker.
 > a fixed location label and per-provider tap counts (no vehicle/driver
 > identifiers), and it logs neither request bodies nor the PIN.
 
+## Applying the drop-off / pick-up migration to an already-deployed backend
+
+The two-colour tile split (each provider tap is recorded as a **drop-off** or a
+**pick-up**) adds a single `direction` column to the `events` table. It is
+delivered as an **additive** migration, so an already-deployed backend is
+upgraded in place with **no data loss** — every pre-existing row defaults to
+`'dropoff'`.
+
+- **Cloudflare D1** — run the migrations command again from the repo root; the
+  runner tracks `0001` as applied and executes only the new file
+  `worker/migrations/0002_direction.sql`:
+
+  ```bash
+  wrangler d1 migrations apply parksa --remote   # picks up 0002_direction
+  wrangler deploy                                # redeploy the Worker code
+  ```
+
+- **Supabase** — apply `supabase/migrations/0002_direction.sql`
+  (`ALTER TABLE events ADD COLUMN direction text NOT NULL DEFAULT 'dropoff'
+  CHECK (direction IN ('dropoff','pickup'))`) to the existing project. The anon
+  INSERT policy already covers the new column and events stay append-only.
+
+Both are **additive and reversible**: to roll back, run
+`ALTER TABLE events DROP COLUMN direction;`. No frontend env vars change.
+
 ### C. Railway / other Postgres (needs its own adapter)
 Bare Railway Postgres is **not** a drop-in Supabase/PostgREST replacement — it
 would need a thin REST backend plus a matching `BackendAdapter` implementation

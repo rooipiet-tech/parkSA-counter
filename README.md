@@ -1,10 +1,13 @@
 # ParkSA Counter
 
-Offline-first PWA tally counter for observing parking-provider pickups at
-OR Tambo (Parkade 2 South, Level 3). One big tile per provider; every tap is
-an append-only event that syncs idempotently to a backend when connectivity
-allows. Analysis (provider × hour / day-of-week / date, SAST) and CSV export
-are built in.
+Offline-first PWA tally counter for observing parking-provider activity at
+OR Tambo (Parkade 2 South, Level 3). One tile per provider, split into two
+independently-tappable coloured halves — the **amber top half records a
+drop-off** and the **teal bottom half records a pick-up** — each with its own
+live per-session count. Every tap is an append-only event (carrying its
+`direction`) that syncs idempotently to a backend when connectivity allows.
+Analysis (provider × hour / day-of-week / date, SAST, broken down by direction)
+and CSV export are built in.
 
 - **Frontend:** Vite 7 + Preact + TypeScript, `vite-plugin-pwa` (generateSW).
 - **Storage:** IndexedDB queue (`pendingEvents`, `pendingTombstones`,
@@ -133,9 +136,10 @@ Always installed (even before PIN unlock).
 | Session | `session-start`, `session-end`, `session-info` | Lifecycle controls (End session is a two-step confirm) |
 | Session | `session-end-confirm`, `session-end-cancel` | Confirm / cancel ending the session |
 | Session | `unsynced-warning` | Shown when a session ends with a non-empty queue |
-| Counting | `tile-<provider_id>` | Tap tile (pointerdown-only capture) |
-| Counting | `count-<provider_id>` | Per-tile running session count |
-| Counting | `undo-btn` | Undo last tap (append-only tombstone) |
+| Counting | `provider-tile-<provider_id>` | Provider tile wrapper (name + two halves) |
+| Counting | `tile-<provider_id>-dropoff` / `tile-<provider_id>-pickup` | The two tappable halves (amber drop-off / teal pick-up; commit on pointerup within slop) |
+| Counting | `count-<provider_id>-dropoff` / `count-<provider_id>-pickup` | Per-half running session count |
+| Counting | `undo-btn` | Undo last tap of either half (append-only tombstone) |
 | Settings | `provider-add-name`, `provider-add` | Add provider |
 | Settings | `provider-row-<id>`, `provider-name-<id>`, `provider-rename-<id>` | Rename |
 | Settings | `provider-hide-<id>` | Hide/unhide (absent for permanent `unknown`) |
@@ -144,10 +148,10 @@ Always installed (even before PIN unlock).
 | Settings | `open-sessions`, `open-session-<id>`, `retro-close-<id>` | Close a stale open session retroactively |
 | Dashboard | `range-from`, `range-to` | SAST date range |
 | Dashboard | `csv-export`, `coverage-export` | CSV downloads |
-| Dashboard | `dash-provider-<id>`, `dash-total-<id>` | Totals row |
-| Dashboard | `cell-hour-<id>-<0..23>` | Provider × hour cell |
-| Dashboard | `cell-dow-<id>-<0..6>` | Provider × day-of-week cell (0 = Sunday) |
-| Dashboard | `cell-date-<id>-<YYYY-MM-DD>` | Provider × date cell |
+| Dashboard | `dash-provider-<id>`, `dash-total-<id>` | Totals row (`dash-total-<id>-dropoff` / `-pickup` for the per-direction totals) |
+| Dashboard | `cell-hour-<id>-<0..23>` | Provider × hour cell (combined; add `-dropoff` / `-pickup` for the direction rows) |
+| Dashboard | `cell-dow-<id>-<0..6>` | Provider × day-of-week cell (0 = Sunday; `-dropoff` / `-pickup` variants) |
+| Dashboard | `cell-date-<id>-<YYYY-MM-DD>` | Provider × date cell (`-dropoff` / `-pickup` variants) |
 
 ## Deployment (HTTPS only)
 
