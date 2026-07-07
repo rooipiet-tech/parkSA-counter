@@ -44,12 +44,23 @@ export async function startSession(page: Page, observer = 'OBS-1'): Promise<void
   await expect(page.getByTestId('undo-btn')).toBeVisible();
 }
 
-/** One simulated physical tap = pointerdown + pointerup (no synthetic click). */
-export async function tapTile(page: Page, providerId: string, times = 1): Promise<void> {
-  const tile = page.getByTestId(`tile-${providerId}`);
+export type TapDirection = 'dropoff' | 'pickup';
+
+/**
+ * One simulated physical tap = pointerdown + pointerup (no synthetic click) on
+ * a specific tile HALF. Defaults to the drop-off (top) half so callers that
+ * don't care about direction keep working.
+ */
+export async function tapTile(
+  page: Page,
+  providerId: string,
+  times = 1,
+  direction: TapDirection = 'dropoff'
+): Promise<void> {
+  const half = page.getByTestId(`tile-${providerId}-${direction}`);
   for (let i = 0; i < times; i++) {
-    await tile.dispatchEvent('pointerdown', { pointerId: 1, isPrimary: true, bubbles: true });
-    await tile.dispatchEvent('pointerup', { pointerId: 1, bubbles: true });
+    await half.dispatchEvent('pointerdown', { pointerId: 1, isPrimary: true, bubbles: true });
+    await half.dispatchEvent('pointerup', { pointerId: 1, bubbles: true });
   }
 }
 

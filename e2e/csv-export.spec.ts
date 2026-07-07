@@ -9,7 +9,7 @@ const fixture = JSON.parse(
 );
 
 const EXPECTED_HEADER =
-  'provider_id,provider_name,event_id,device_ts,received_at,synced_offline,session_id,observer_label,location_label,tombstoned,clock_suspect';
+  'provider_id,provider_name,direction,event_id,device_ts,received_at,synced_offline,session_id,observer_label,location_label,tombstoned,clock_suspect';
 
 test('CSV export works from the UI and programmatically, byte-identical (AC-19)', async ({
   page
@@ -44,6 +44,12 @@ test('CSV export works from the UI and programmatically, byte-identical (AC-19)'
   const tombVals = new Set(lines.slice(1).map((l) => l.split(',')[idxTomb]));
   expect(syncedVals).toEqual(new Set(['true', 'false']));
   expect(tombVals).toEqual(new Set(['true', 'false']));
+
+  // direction column (AD-5): a real mix of both halves, enum values only.
+  const idxDir = lines[0].split(',').indexOf('direction');
+  expect(idxDir).toBe(2); // inserted immediately after provider_name
+  const dirVals = new Set(lines.slice(1).map((l) => l.split(',')[idxDir]));
+  expect(dirVals).toEqual(new Set(['dropoff', 'pickup']));
   expect(lines.slice(1).filter((l) => l.split(',')[idxTomb] === 'true')).toHaveLength(
     fixture.tombstoneCount
   );

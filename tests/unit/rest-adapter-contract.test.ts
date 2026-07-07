@@ -13,6 +13,7 @@ function makeEvent(overrides: Partial<TapEvent> = {}): TapEvent {
   return {
     id: newId(),
     provider_id: 'mr-parking',
+    direction: 'dropoff',
     device_ts: new Date().toISOString(),
     session_id: newId(),
     observer_label: 'OBS-1',
@@ -153,6 +154,17 @@ function contractSuite(name: string, make: () => BackendAdapter) {
       const t = await a.getServerTime();
       expect(typeof t).toBe('number');
       expect(Math.abs(t - Date.now())).toBeLessThan(5_000);
+    });
+
+    it('direction round-trips through the Worker + D1 column (AD-1)', async () => {
+      const a = make();
+      const drop = makeEvent({ direction: 'dropoff' });
+      const pick = makeEvent({ direction: 'pickup' });
+      await a.insertEvents([drop, pick]);
+      const stored = await a.listEvents();
+      const byId = new Map(stored.map((e) => [e.id, e.direction]));
+      expect(byId.get(drop.id)).toBe('dropoff');
+      expect(byId.get(pick.id)).toBe('pickup');
     });
 
     it('pagination: >1000 events round-trip completely (L-0006)', async () => {

@@ -17,11 +17,11 @@ test('undo tombstones unsynced and synced events, never deletes, and excludes th
   await startSession(page);
 
   await tapTile(page, 'mr-parking', 3);
-  await expect(page.getByTestId('count-mr-parking')).toHaveText('3');
+  await expect(page.getByTestId('count-mr-parking-dropoff')).toHaveText('3');
 
   // Undo an UNSYNCED event.
   await page.getByTestId('undo-btn').click();
-  await expect(page.getByTestId('count-mr-parking')).toHaveText('2');
+  await expect(page.getByTestId('count-mr-parking-dropoff')).toHaveText('2');
   let state = await getQueueState(page);
   expect(state.events).toHaveLength(3); // row still present
   expect(state.events.filter((e) => e.tombstoned)).toHaveLength(1);
@@ -31,7 +31,7 @@ test('undo tombstones unsynced and synced events, never deletes, and excludes th
   state = await getQueueState(page);
   expect(state.events.every((e) => e.synced)).toBe(true);
   await page.getByTestId('undo-btn').click();
-  await expect(page.getByTestId('count-mr-parking')).toHaveText('1');
+  await expect(page.getByTestId('count-mr-parking-dropoff')).toHaveText('1');
   await flush(page); // tombstone itself syncs idempotently
 
   const server = await getServerState(page);
@@ -57,12 +57,12 @@ test('undo with nothing left to undo is a safe no-op (AC-09)', async ({ page }) 
 
   await tapTile(page, 'safe-car', 1);
   await page.getByTestId('undo-btn').click();
-  await expect(page.getByTestId('count-safe-car')).toHaveText('0');
+  await expect(page.getByTestId('count-safe-car-dropoff')).toHaveText('0');
   await page.getByTestId('undo-btn').click(); // everything tombstoned already
   state = await getQueueState(page);
   expect(state.events).toHaveLength(1);
   expect(state.events.filter((e) => e.tombstoned)).toHaveLength(1);
   // Still fully operational afterwards.
   await tapTile(page, 'safe-car', 1);
-  await expect(page.getByTestId('count-safe-car')).toHaveText('1');
+  await expect(page.getByTestId('count-safe-car-dropoff')).toHaveText('1');
 });

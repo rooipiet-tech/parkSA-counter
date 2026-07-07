@@ -10,6 +10,7 @@ function serverEvent(overrides: Partial<ServerEvent>): ServerEvent {
   return {
     id: newId(),
     provider_id: 'mr-parking',
+    direction: 'dropoff',
     device_ts: '2026-06-05T06:00:00.000Z',
     received_at: '2026-06-05T06:00:05.000Z',
     session_id: newId(),
@@ -25,11 +26,11 @@ describe('event-time correctness (AC-14 / DC-06)', () => {
   it('(a) synced_offline is written by the client at enqueue time, before any send', async () => {
     let offline = true;
     const { queue } = await openTestQueue({ offline: () => offline });
-    const offlineTap = queue.enqueueTap('mr-parking');
+    const offlineTap = queue.enqueueTap('mr-parking', 'dropoff');
     expect(offlineTap.synced_offline).toBe(true); // already set, nothing sent yet
 
     offline = false;
-    const onlineTap = queue.enqueueTap('mr-parking');
+    const onlineTap = queue.enqueueTap('mr-parking', 'pickup');
     expect(onlineTap.synced_offline).toBe(false);
 
     const state = await queue.getQueueState();

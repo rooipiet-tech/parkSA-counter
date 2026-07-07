@@ -15,6 +15,7 @@ function sastEvent(hour: number, minute: number, sessionId: string): ServerEvent
   return {
     id: newId(),
     provider_id: 'mr-parking',
+    direction: 'dropoff',
     device_ts: ts,
     received_at: ts,
     session_id: sessionId,

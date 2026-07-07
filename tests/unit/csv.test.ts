@@ -15,6 +15,7 @@ function serverEvent(overrides: Partial<ServerEvent> = {}): ServerEvent {
   return {
     id: newId(),
     provider_id: 'mr-parking',
+    direction: 'dropoff',
     device_ts: '2026-06-05T06:00:00.000Z',
     received_at: '2026-06-05T06:00:05.000Z',
     session_id: newId(),
@@ -27,12 +28,30 @@ function serverEvent(overrides: Partial<ServerEvent> = {}): ServerEvent {
 }
 
 describe('CSV export (AC-19 / AC-25)', () => {
-  it('raw header is EXACTLY the frozen column list', () => {
+  it('raw header is EXACTLY the frozen column list (AD-5: direction after provider_name)', () => {
     expect(RAW_CSV_HEADER).toBe(
-      'provider_id,provider_name,event_id,device_ts,received_at,synced_offline,session_id,observer_label,location_label,tombstoned,clock_suspect'
+      'provider_id,provider_name,direction,event_id,device_ts,received_at,synced_offline,session_id,observer_label,location_label,tombstoned,clock_suspect'
     );
     const csv = exportCsv({ events: [], tombstones: [], providers: [], range: { from: '2026-06-01', to: '2026-06-01' } });
     expect(csv.split('\n')[0]).toBe(RAW_CSV_HEADER);
+  });
+
+  it('direction column carries each event half (AD-5)', () => {
+    const drop = serverEvent({ direction: 'dropoff' });
+    const pick = serverEvent({ direction: 'pickup', device_ts: '2026-06-05T07:00:00.000Z' });
+    const csv = exportCsv({
+      events: [drop, pick],
+      tombstones: [],
+      providers: SEED_PROVIDERS,
+      range: { from: '2026-06-05', to: '2026-06-05' }
+    });
+    const lines = csv.trimEnd().split('\n');
+    const cols = lines[0].split(',');
+    const idx = cols.indexOf('direction');
+    expect(idx).toBe(2); // immediately after provider_name
+    const get = (id: string) => lines.find((l) => l.includes(id))!.split(',')[idx];
+    expect(get(drop.id)).toBe('dropoff');
+    expect(get(pick.id)).toBe('pickup');
   });
 
   it('coverage header is EXACTLY date,hour,covered,event_count', () => {
