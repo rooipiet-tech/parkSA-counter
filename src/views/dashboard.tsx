@@ -161,30 +161,32 @@ export function DashboardView({ ctx }: { ctx: AppCtx }) {
       {agg && (
         <div class="agg-tables">
           <h3>Totals ({agg.total} events in range, tombstones excluded)</h3>
-          <table>
-            <thead>
-              <tr>
-                <th>Provider</th>
-                <th>Total</th>
-                <th>Drop-off</th>
-                <th>Pick-up</th>
-              </tr>
-            </thead>
-            <tbody>
-              {providers.map((p) => (
-                <tr key={p.id}>
-                  <td data-testid={`dash-provider-${p.id}`}>{p.name}</td>
-                  <td data-testid={`dash-total-${p.id}`}>{agg.totalsByProvider[p.id] ?? 0}</td>
-                  <td data-testid={`dash-total-${p.id}-dropoff`}>
-                    {agg.totalsByProviderDir[p.id]?.dropoff ?? 0}
-                  </td>
-                  <td data-testid={`dash-total-${p.id}-pickup`}>
-                    {agg.totalsByProviderDir[p.id]?.pickup ?? 0}
-                  </td>
+          <div class="scroll-x">
+            <table>
+              <thead>
+                <tr>
+                  <th>Provider</th>
+                  <th>Total</th>
+                  <th>Drop-off</th>
+                  <th>Pick-up</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {providers.map((p) => (
+                  <tr key={p.id}>
+                    <td data-testid={`dash-provider-${p.id}`}>{p.name}</td>
+                    <td data-testid={`dash-total-${p.id}`}>{agg.totalsByProvider[p.id] ?? 0}</td>
+                    <td data-testid={`dash-total-${p.id}-dropoff`}>
+                      {agg.totalsByProviderDir[p.id]?.dropoff ?? 0}
+                    </td>
+                    <td data-testid={`dash-total-${p.id}-pickup`}>
+                      {agg.totalsByProviderDir[p.id]?.pickup ?? 0}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           <h3>Provider x hour of day (SAST)</h3>
           <div class="scroll-x">
