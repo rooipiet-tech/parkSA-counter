@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { gotoApp, startSession, tapTile, unlock } from './helpers.ts';
+import { endSession, gotoApp, startSession, tapTile, unlock } from './helpers.ts';
 
 test('tap-to-visual-feedback stays under 200ms over 10 taps (AC-04)', async ({ page }) => {
   await gotoApp(page);
@@ -45,7 +45,7 @@ test('tiles show running per-session counts and reset to 0 on a new session (AC-
   await expect(page.getByTestId('count-mr-parking')).toHaveText('3');
   await expect(page.getByTestId('count-safe-car')).toHaveText('1');
 
-  await page.getByTestId('session-end').click();
+  await endSession(page);
   await expect(page.getByTestId('session-start')).toBeVisible();
   await startSession(page, 'OBS-2');
   await expect(page.getByTestId('count-mr-parking')).toHaveText('0');

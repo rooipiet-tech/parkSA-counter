@@ -39,6 +39,43 @@ test('(c) second pointerdown on the SAME tile while held is ignored (AC-05)', as
   await expect(page.getByTestId('count-mr-parking')).toHaveText('1');
 });
 
+test('(e) a scroll-drag starting on a tile (pointercancel) records ZERO events (POL-01/AC-05)', async ({
+  page
+}) => {
+  const tile = page.getByTestId('tile-mr-parking');
+  // Touch-drag-to-scroll that begins on the tile: pointerdown, a large move,
+  // then the browser takes over scrolling and fires pointercancel.
+  await tile.dispatchEvent('pointerdown', {
+    pointerId: 1,
+    isPrimary: true,
+    bubbles: true,
+    clientX: 100,
+    clientY: 100
+  });
+  await tile.dispatchEvent('pointermove', { pointerId: 1, bubbles: true, clientX: 100, clientY: 300 });
+  await tile.dispatchEvent('pointercancel', { pointerId: 1, bubbles: true });
+  const state = await getQueueState(page);
+  expect(state.events).toHaveLength(0);
+  await expect(page.getByTestId('count-mr-parking')).toHaveText('0');
+});
+
+test('(f) a large-move drag released off-slop (pointerup) records ZERO events (POL-01/AC-05)', async ({
+  page
+}) => {
+  const tile = page.getByTestId('tile-mr-parking');
+  await tile.dispatchEvent('pointerdown', {
+    pointerId: 1,
+    isPrimary: true,
+    bubbles: true,
+    clientX: 100,
+    clientY: 100
+  });
+  await tile.dispatchEvent('pointermove', { pointerId: 1, bubbles: true, clientX: 100, clientY: 260 });
+  await tile.dispatchEvent('pointerup', { pointerId: 1, bubbles: true, clientX: 100, clientY: 260 });
+  const state = await getQueueState(page);
+  expect(state.events).toHaveLength(0);
+});
+
 test('(d) simultaneous pointers on two DIFFERENT tiles record one event each (AC-05)', async ({
   page
 }) => {

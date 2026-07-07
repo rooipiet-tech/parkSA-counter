@@ -117,6 +117,28 @@ function contractSuite(name: string, make: () => BackendAdapter) {
       expect(ordered[1].id).toBe('mr-parking');
     });
 
+    it('deleteProvider is refused for EVERY id (providers are never deleted) (OR-F4)', async () => {
+      const a = make();
+      // Non-permanent id: still refused (mirrors the anon no-DELETE policy).
+      await expect(a.deleteProvider('mr-parking')).rejects.toThrow();
+      expect((await a.listProviders()).some((p) => p.id === 'mr-parking')).toBe(true);
+      // Permanent id: refused too.
+      await expect(a.deleteProvider('unknown')).rejects.toThrow();
+    });
+
+    it('reorder renumbers the FULL list; unlisted providers follow the listed ones (OR-F4)', async () => {
+      const a = make();
+      await a.reorderProviders(['eazypark', 'mr-parking']);
+      const ordered = await a.listProviders();
+      expect(ordered[0].id).toBe('eazypark');
+      expect(ordered[1].id).toBe('mr-parking');
+      // sort_order is contiguous 1..N across ALL providers (no gaps/dupes).
+      const orders = ordered.map((p) => p.sort_order).sort((x, y) => x - y);
+      expect(orders).toEqual(Array.from({ length: ordered.length }, (_, i) => i + 1));
+      // Every provider still present (reorder never drops rows).
+      expect(ordered).toHaveLength(SEED_PROVIDERS.length);
+    });
+
     it('permanent provider (Unknown) refuses hide and delete', async () => {
       const a = make();
       await expect(a.setProviderHidden('unknown', true)).rejects.toThrow();

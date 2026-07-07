@@ -47,6 +47,11 @@ test('50 offline taps with a mid-session offline reload sync losslessly on recon
   expect(state.events).toHaveLength(50);
   expect(state.pendingCount).toBe(50);
 
+  // OR-F2: record the ACTUAL tap order (queue is in tap/seq order) BEFORE
+  // reconnect so we can later check the server's device_ts values follow that
+  // order — not a tautological sort-then-assert-sorted.
+  const tapOrder = state.events.map((e) => e.id);
+
   // Reconnect: auto-sync drains the queue without user action.
   await goOnlineAndSync(page);
   await expect(page.getByTestId('unsynced-badge')).toHaveText('0', { timeout: 30_000 });
@@ -65,11 +70,15 @@ test('50 offline taps with a mid-session offline reload sync losslessly on recon
   // Every event was flagged offline at enqueue time.
   expect(events.every((e) => e.synced_offline === true)).toBe(true);
 
-  // device_ts values are preserved: monotonically non-decreasing, inside the
-  // tap window, NOT the reconnect time.
-  const ordered = [...events].sort((a, b) => (a.device_ts < b.device_ts ? -1 : 1));
-  for (let i = 1; i < ordered.length; i++) {
-    expect(ordered[i].device_ts >= ordered[i - 1].device_ts).toBe(true);
+  // device_ts values are preserved: mapped back into the RECORDED tap order
+  // they are monotonically non-decreasing (device_ts tracks tap time, not the
+  // reconnect/received_at time).
+  const tsById = new Map(events.map((e) => [e.id, e.device_ts]));
+  expect(tsById.size).toBe(50);
+  const orderedTs = tapOrder.map((id) => tsById.get(id)!);
+  expect(orderedTs.every((t) => t !== undefined)).toBe(true);
+  for (let i = 1; i < orderedTs.length; i++) {
+    expect(orderedTs[i] >= orderedTs[i - 1]).toBe(true);
   }
   for (const e of events) {
     const t = new Date(e.device_ts).getTime();

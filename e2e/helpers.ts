@@ -53,6 +53,12 @@ export async function tapTile(page: Page, providerId: string, times = 1): Promis
   }
 }
 
+/** End the session via the POL-03 two-step confirm (click End, then Confirm). */
+export async function endSession(page: Page): Promise<void> {
+  await page.getByTestId('session-end').click();
+  await page.getByTestId('session-end-confirm').click();
+}
+
 /** Settings only open via a deliberate >=500ms long-press (AC-11). */
 export async function longPressSettingsOpen(page: Page): Promise<void> {
   const btn = page.getByTestId('settings-open');

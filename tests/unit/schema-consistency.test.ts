@@ -92,6 +92,25 @@ describe('migration SQL matches the adapter contract (AC-20/AC-22/AC-25)', () =>
     expect(sql).toContain('GRANT UPDATE (end_ts, end_source) ON sessions TO anon;');
   });
 
+  it('sessions has an end_ts >= start_ts CHECK (RS-04)', () => {
+    expect(sql).toMatch(/CHECK \(end_ts IS NULL OR end_ts >= start_ts\)/i);
+  });
+
+  it('providers anon UPDATE is column-limited to name/sort_order/hidden (RS-04)', () => {
+    expect(sql).toContain('REVOKE UPDATE ON providers FROM anon;');
+    expect(sql).toContain('GRANT UPDATE (name, sort_order, hidden) ON providers TO anon;');
+  });
+
+  it('permanent guard also blocks primary-key mutation (MIG-02)', () => {
+    expect(sql).toMatch(/NEW\.id <> OLD\.id/);
+  });
+
+  it('policies and the guard trigger are drop-if-exists guarded for safe re-run (MIG-01)', () => {
+    expect(sql).toMatch(/DROP POLICY IF EXISTS events_insert_anon ON events;/i);
+    expect(sql).toMatch(/DROP POLICY IF EXISTS providers_update_anon ON providers;/i);
+    expect(sql).toMatch(/DROP TRIGGER IF EXISTS providers_permanent_guard ON providers;/i);
+  });
+
   it('permanent-provider guard trigger and server_now() exist; providers have no anon DELETE', () => {
     expect(sql).toMatch(/CREATE TRIGGER providers_permanent_guard/i);
     expect(sql).toMatch(/CREATE OR REPLACE FUNCTION server_now\(\) RETURNS timestamptz/i);

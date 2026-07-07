@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 import {
   DEFAULT_LOCATION,
+  endSession,
+  flush,
   getServerState,
   gotoApp,
   setForceOffline,
@@ -21,7 +23,7 @@ test('start/end round-trip persists start_ts and end_ts with end_source=normal (
   const before = Date.now();
   await startSession(page);
   await tapTile(page, 'mr-parking', 2);
-  await page.getByTestId('session-end').click();
+  await endSession(page);
   await expect(page.getByTestId('session-start')).toBeVisible();
   const after = Date.now();
 
@@ -53,7 +55,33 @@ test('ending a session with unsynced taps shows the unsynced warning (AC-10)', a
   await startSession(page);
   await setForceOffline(page, true);
   await tapTile(page, 'safe-car', 3);
-  await page.getByTestId('session-end').click();
+  await endSession(page);
   await expect(page.getByTestId('unsynced-warning')).toBeVisible();
   await expect(page.getByTestId('unsynced-badge')).toHaveText('3'); // the 3 offline taps stay queued
+});
+
+test('a stale open session is closed retroactively via the exposed API (AC-10/AN-01)', async ({
+  page
+}) => {
+  await gotoApp(page);
+  await unlock(page);
+  await startSession(page);
+  await tapTile(page, 'mr-parking', 1);
+  await flush(page); // the open session (end_ts null) now exists server-side
+
+  const sessionId = await page.evaluate(async () => {
+    const s = await window.__PARKSA__.getServerState();
+    return s.sessions[0].id;
+  });
+
+  // Drive the exposed retroactive-close path (the same one the settings UI uses).
+  await page.evaluate((id) => window.__PARKSA__.closeSessionRetroactively(id), sessionId);
+  await flush(page);
+
+  await expect
+    .poll(async () => {
+      const s = await getServerState(page);
+      return s.sessions.find((x) => x.id === sessionId)?.end_source ?? null;
+    })
+    .toBe('retroactive');
 });

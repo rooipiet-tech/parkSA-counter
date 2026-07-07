@@ -105,6 +105,39 @@ describe('CSV export (AC-19 / AC-25)', () => {
     expect(rows).toBe(fixture.eventCount);
   });
 
+  it('neutralizes formula-injection in provider names (RS-01)', () => {
+    // A provider renamed to a spreadsheet formula must be exported as inert text.
+    const providers = [
+      { id: 'mr-parking', name: '=HYPERLINK("http://evil","x")', sort_order: 1, hidden: false, is_permanent: false }
+    ];
+    const e = serverEvent({ provider_id: 'mr-parking' });
+    const csv = exportCsv({
+      events: [e],
+      tombstones: [],
+      providers,
+      range: { from: '2026-06-05', to: '2026-06-05' }
+    });
+    const row = csv.trimEnd().split('\n')[1];
+    // The provider_name field is prefixed with a single quote AND force-quoted,
+    // so a spreadsheet treats it as literal text, not a formula.
+    expect(row.startsWith('mr-parking,"\'=HYPERLINK(')).toBe(true);
+    // The raw '=' never appears as the first char of an unquoted field.
+    expect(row).not.toMatch(/(^|,)=/);
+  });
+
+  it('neutralizes the other formula-trigger prefixes (+, -, @, RS-01)', () => {
+    for (const bad of ['+1+1', '-2+3', '@SUM(A1)']) {
+      const csv = exportCsv({
+        events: [serverEvent({ location_label: bad })],
+        tombstones: [],
+        providers: SEED_PROVIDERS,
+        range: { from: '2026-06-05', to: '2026-06-05' }
+      });
+      const row = csv.trimEnd().split('\n')[1];
+      expect(row).toContain(`"'${bad}"`);
+    }
+  });
+
   it('fields containing commas or quotes are escaped', () => {
     const e = serverEvent({ location_label: 'Parkade 2, "South"' });
     const csv = exportCsv({

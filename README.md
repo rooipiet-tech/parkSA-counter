@@ -48,8 +48,11 @@ Configuration (build-time env vars):
 | `VITE_SUPABASE_ANON_KEY` | unset | Supabase anon key (unset ⇒ stub backend) |
 
 URL hooks (used by the tests): `?fresh=1` wipes localStorage/IndexedDB before
-boot (then strips itself from the URL); `?seed=month` self-seeds the stub with
-the deterministic June-2026 synthetic month (`src/seed/month.ts`).
+boot (then strips itself from the URL) — but it **refuses to wipe when unsynced
+taps are queued** unless `?fresh=1&force=1` is also given, so the zero-loss
+guarantee holds in production (test/agent fresh contexts have nothing pending,
+so behaviour is unchanged). `?seed=month` self-seeds the stub with the
+deterministic June-2026 synthetic month (`src/seed/month.ts`).
 
 ## Agent interface
 
@@ -88,6 +91,16 @@ Always installed (even before PIN unlock).
 - `flush(): Promise<void>` — flush the queue now; rejects on backend failure.
 - `exportCsv({ from, to }): Promise<string>` — raw-events CSV over a SAST date
   range (`YYYY-MM-DD`, inclusive); byte-identical to the dashboard download.
+  Fields starting with `= + - @` (formula-injection triggers) are neutralized.
+- `exportCoverageCsv({ from, to }): Promise<string>` — per date×hour SAST
+  coverage CSV (`date,hour,covered,event_count`); distinguishes unobserved bins
+  from zero-demand ones.
+- `closeSessionRetroactively(sessionId, endTs?): Promise<void>` — closes a
+  never-ended (stale) session with `end_source='retroactive'`. Also reachable
+  from the settings UI (`retro-close-<id>` buttons). Never auto-runs against the
+  session resumed on reload — you must name a specific id.
+- `listOpenSessions(): Promise<Session[]>` — open (never-ended) backend sessions
+  excluding the one currently resumed on this device (retro-close candidates).
 - `injectFault(n: number): void` / `clearFault(): void` — **stub-only** fault
   injection (the next `n` backend calls fail). On the Supabase adapter these
   are `console.warn` no-ops.
@@ -97,16 +110,18 @@ Always installed (even before PIN unlock).
 | Area | testid | Element / behaviour |
 | --- | --- | --- |
 | Shell | `insecure-context-warning` | Blocking warning when `!isSecureContext` |
-| Shell | `ios-install-hint` | Shown on iPhone UA when not standalone |
+| Shell | `ios-install-hint` | Compact install hint on iPhone UA when not standalone |
+| Shell | `ios-install-hint-dismiss` | Dismiss the install hint (persisted per device) |
 | Shell | `unsynced-banner` | Nag when a relaunch finds unsynced taps |
 | Shell | `unsynced-badge` | Persistent unsynced-count badge |
-| Shell | `last-sync` | Last successful sync (ISO timestamp or `never`) |
+| Shell | `last-sync` | Last successful sync — humanized SAST text; `data-iso` attr holds the machine-readable ISO instant (`Never synced` when none) |
 | Shell | `nav-count`, `nav-dashboard` | View switching (hash-based) |
 | Shell | `settings-open` | Settings opener — **long-press ≥500 ms**; a plain click does nothing |
 | PIN | `pin-input`, `pin-submit`, `pin-error` | Unlock gate (once per device) |
 | Session | `observer-input`, `observer-helper`, `observer-error` | Pseudonymous observer code (`^[A-Za-z0-9_-]{1,12}$`) |
 | Session | `location-input` | Location label (default `OR Tambo Parkade 2 South Level 3`) |
-| Session | `session-start`, `session-end`, `session-info` | Lifecycle controls |
+| Session | `session-start`, `session-end`, `session-info` | Lifecycle controls (End session is a two-step confirm) |
+| Session | `session-end-confirm`, `session-end-cancel` | Confirm / cancel ending the session |
 | Session | `unsynced-warning` | Shown when a session ends with a non-empty queue |
 | Counting | `tile-<provider_id>` | Tap tile (pointerdown-only capture) |
 | Counting | `count-<provider_id>` | Per-tile running session count |
@@ -116,6 +131,7 @@ Always installed (even before PIN unlock).
 | Settings | `provider-hide-<id>` | Hide/unhide (absent for permanent `unknown`) |
 | Settings | `provider-top-<id>`, `provider-up-<id>`, `provider-down-<id>` | Reorder |
 | Settings | `settings-back`, `settings-error` | Navigation / errors |
+| Settings | `open-sessions`, `open-session-<id>`, `retro-close-<id>` | Close a stale open session retroactively |
 | Dashboard | `range-from`, `range-to` | SAST date range |
 | Dashboard | `csv-export`, `coverage-export` | CSV downloads |
 | Dashboard | `dash-provider-<id>`, `dash-total-<id>` | Totals row |
@@ -157,8 +173,16 @@ hardening. Read before applying:
 - `events.session_id` deliberately has **no foreign key**: the client flushes
   sessions before events on a best-effort basis, but an event must never be
   rejected because its session row has not arrived yet.
-- The `providers_permanent_guard` trigger blocks hiding, demoting or deleting
-  permanent providers (`Unknown`) even for callers that bypass the app.
+- The `providers_permanent_guard` trigger blocks hiding, demoting, **rekeying
+  (PK mutation)** or deleting permanent providers (`Unknown`) even for callers
+  that bypass the app. Provider anon UPDATE is additionally column-limited via
+  `REVOKE UPDATE ON providers FROM anon;` +
+  `GRANT UPDATE (name, sort_order, hidden) ON providers TO anon;` so `id` and
+  `is_permanent` are immutable to the anon role.
+- `sessions` carries `CHECK (end_ts IS NULL OR end_ts >= start_ts)`.
+- The migration is **re-runnable**: every policy is `DROP POLICY IF EXISTS`-ed
+  before `CREATE`, the trigger is `DROP TRIGGER IF EXISTS`-ed, and functions use
+  `CREATE OR REPLACE`.
 - `server_now()` (SECURITY-neutral, STABLE) backs the client clock-skew
   audit; keep EXECUTE granted to `anon`.
 - The 12 seeded providers must stay identical (ids, names, order) to

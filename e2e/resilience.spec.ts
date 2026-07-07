@@ -11,8 +11,14 @@ test('backend failure never blocks counting; queue drains and last-sync updates 
   // Healthy sync first: a tap + flush set the last-sync indicator.
   await tapTile(page, 'mr-parking', 1);
   await page.evaluate(() => window.__PARKSA__.flush());
-  await expect(page.getByTestId('last-sync')).toHaveText(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/);
-  const lastSyncBefore = await page.getByTestId('last-sync').textContent();
+  // POL-05: visible text is humanized SAST; the machine-readable ISO lives in
+  // the data-iso attribute.
+  await expect(page.getByTestId('last-sync')).toHaveText(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} SAST/);
+  await expect(page.getByTestId('last-sync')).toHaveAttribute(
+    'data-iso',
+    /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/
+  );
+  const lastSyncBefore = await page.getByTestId('last-sync').getAttribute('data-iso');
 
   // Inject a persistent backend fault (stub-only hook).
   await page.evaluate(() => window.__PARKSA__.injectFault(50));
@@ -38,7 +44,7 @@ test('backend failure never blocks counting; queue drains and last-sync updates 
   await page.evaluate(() => window.__PARKSA__.clearFault());
   await page.evaluate(() => window.__PARKSA__.flush());
   await expect(page.getByTestId('unsynced-badge')).toHaveText('0', { timeout: 20_000 });
-  await expect(page.getByTestId('last-sync')).toHaveText(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/);
+  await expect(page.getByTestId('last-sync')).toHaveText(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} SAST/);
 
   const server = await page.evaluate(() => window.__PARKSA__.getServerState());
   expect(server.events).toHaveLength(4);
