@@ -4,6 +4,14 @@ import { describe, expect, it } from 'vitest';
 import { SEED_PROVIDERS } from '../../src/seed/providers.ts';
 
 const sql = readFileSync(join(process.cwd(), 'supabase', 'migrations', '0001_init.sql'), 'utf8');
+const directionSql = readFileSync(
+  join(process.cwd(), 'supabase', 'migrations', '0002_direction.sql'),
+  'utf8'
+);
+const workerDirectionSql = readFileSync(
+  join(process.cwd(), 'worker', 'migrations', '0002_direction.sql'),
+  'utf8'
+);
 
 /** Extract the column names of a CREATE TABLE block. */
 function tableBlock(name: string): string {
@@ -121,5 +129,27 @@ describe('migration SQL matches the adapter contract (AC-20/AC-22/AC-25)', () =>
 
   it('schema stores no vehicle or driver identifiers (POPIA minimality)', () => {
     expect(sql).not.toMatch(/vehicle|driver|registration|licence|license/i);
+  });
+});
+
+describe('direction migration is additive and reversible (AD-1/AD-8)', () => {
+  it('Supabase 0002 adds a NOT NULL direction column defaulting to dropoff with a CHECK', () => {
+    // 0001 must NOT be edited — direction lives entirely in the additive 0002.
+    expect(sql).not.toMatch(/direction/i);
+    expect(directionSql).toMatch(/ALTER TABLE\s+events\s+ADD COLUMN\s+direction\s+text/i);
+    expect(directionSql).toMatch(/NOT NULL/i);
+    expect(directionSql).toMatch(/DEFAULT 'dropoff'/i);
+    expect(directionSql).toMatch(/CHECK \(direction IN \('dropoff', 'pickup'\)\)/i);
+  });
+
+  it('Cloudflare D1 0002 adds the same additive column (SQLite)', () => {
+    expect(workerDirectionSql).toMatch(
+      /ALTER TABLE events ADD COLUMN direction TEXT NOT NULL DEFAULT 'dropoff'/i
+    );
+  });
+
+  it('both note the reversible DROP COLUMN path (no data loss)', () => {
+    expect(directionSql).toMatch(/DROP COLUMN direction/i);
+    expect(workerDirectionSql).toMatch(/DROP COLUMN direction/i);
   });
 });

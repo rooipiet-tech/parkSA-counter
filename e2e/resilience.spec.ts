@@ -34,11 +34,11 @@ test('backend failure never blocks counting; queue drains and last-sync updates 
 
   // ...but counting continues, unblocked, with no modal/dialog in the way.
   await tapTile(page, 'safe-car', 3);
-  await expect(page.getByTestId('count-safe-car')).toHaveText('3');
+  await expect(page.getByTestId('count-safe-car-dropoff')).toHaveText('3');
   await expect(page.getByTestId('unsynced-badge')).not.toHaveText('0');
   expect(await page.locator('dialog, [role=dialog], [role=alertdialog]').count()).toBe(0);
   await expect(page.getByTestId('undo-btn')).toBeVisible();
-  await expect(page.getByTestId('tile-mr-parking')).toBeVisible();
+  await expect(page.getByTestId('provider-tile-mr-parking')).toBeVisible();
 
   // Recovery: clear the fault; the queue drains and last-sync advances.
   await page.evaluate(() => window.__PARKSA__.clearFault());

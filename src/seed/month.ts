@@ -1,7 +1,7 @@
 import { eachSastDate, sastToUtcMs, toSastDow } from '../lib/sast.ts';
 import { SEED_PROVIDERS } from './providers.ts';
 import { DEFAULT_LOCATION } from '../lib/types.ts';
-import type { Provider, ServerEvent, Session, Tombstone } from '../lib/types.ts';
+import type { Provider, ServerEvent, Session, TapDirection, Tombstone } from '../lib/types.ts';
 
 /**
  * Deterministic synthetic month of observations: 2026-06-01..2026-06-30.
@@ -86,9 +86,12 @@ export function generateMonth(): SeedMonth {
         const receivedMs = syncedOffline
           ? endMs + Math.floor(rand() * 3_600_000) // synced later, after reconnect
           : deviceMs + 2_000 + Math.floor(rand() * 5_000);
+        // Realistic drop-off-heavy mix (~62/38), deterministic from the stream.
+        const direction: TapDirection = rand() < 0.62 ? 'dropoff' : 'pickup';
         const event: ServerEvent = {
           id: prngUuid(rand),
           provider_id: provider.id,
+          direction,
           device_ts: new Date(deviceMs).toISOString(),
           received_at: new Date(receivedMs).toISOString(),
           session_id: session.id,

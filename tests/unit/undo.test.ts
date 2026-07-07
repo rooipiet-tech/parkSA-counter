@@ -4,15 +4,18 @@ import { undoLast } from '../../src/queue/undo.ts';
 import { openTestQueue } from './helpers.ts';
 
 describe('undo = append-only tombstones (AC-09)', () => {
-  it('offline undo of an unsynced event: event row stays, tombstone queued, count drops', async () => {
+  it('offline undo of an unsynced event: event row stays, tombstone queued, correct half count drops', async () => {
     const { queue } = await openTestQueue({ offline: true });
-    queue.enqueueTap('mr-parking');
-    queue.enqueueTap('mr-parking');
-    queue.enqueueTap('mr-parking');
+    queue.enqueueTap('mr-parking', 'dropoff');
+    queue.enqueueTap('mr-parking', 'dropoff');
+    queue.enqueueTap('mr-parking', 'pickup'); // last tap is the pick-up half
 
     const undone = undoLast(queue);
     expect(undone).not.toBeNull();
-    expect(queue.getCountFor('mr-parking')).toBe(2);
+    expect(undone!.direction).toBe('pickup');
+    // AD-3: only the pick-up half decrements; the drop-off half is untouched.
+    expect(queue.getCountFor('mr-parking', 'pickup')).toBe(0);
+    expect(queue.getCountFor('mr-parking', 'dropoff')).toBe(2);
 
     const state = await queue.getQueueState();
     expect(state.events).toHaveLength(3); // row still present
@@ -30,14 +33,14 @@ describe('undo = append-only tombstones (AC-09)', () => {
   it('undo of an already-synced event tombstones it on the server too', async () => {
     const { queue } = await openTestQueue();
     const adapter = new StubAdapter();
-    queue.enqueueTap('safe-car');
+    queue.enqueueTap('safe-car', 'dropoff');
     await queue.flush(adapter);
-    expect(queue.getCountFor('safe-car')).toBe(1);
+    expect(queue.getCountFor('safe-car', 'dropoff')).toBe(1);
 
     const undone = undoLast(queue);
     expect(undone).not.toBeNull();
     expect(undone!.synced).toBe(true);
-    expect(queue.getCountFor('safe-car')).toBe(0);
+    expect(queue.getCountFor('safe-car', 'dropoff')).toBe(0);
 
     await queue.flush(adapter);
     expect(await adapter.listEvents()).toHaveLength(1); // original row retained
@@ -49,7 +52,7 @@ describe('undo = append-only tombstones (AC-09)', () => {
   it('tombstone sync is idempotent under retry', async () => {
     const { queue } = await openTestQueue();
     const adapter = new StubAdapter();
-    queue.enqueueTap('e-parking');
+    queue.enqueueTap('e-parking', 'dropoff');
     await queue.flush(adapter);
     const undone = undoLast(queue)!;
 
@@ -64,7 +67,7 @@ describe('undo = append-only tombstones (AC-09)', () => {
   it('undo with nothing to undo is a safe no-op', async () => {
     const { queue } = await openTestQueue();
     expect(undoLast(queue)).toBeNull();
-    queue.enqueueTap('mr-parking');
+    queue.enqueueTap('mr-parking', 'dropoff');
     undoLast(queue);
     expect(undoLast(queue)).toBeNull(); // everything already tombstoned
     const state = await queue.getQueueState();

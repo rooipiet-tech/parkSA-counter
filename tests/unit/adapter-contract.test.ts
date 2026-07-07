@@ -9,6 +9,7 @@ function makeEvent(overrides: Partial<TapEvent> = {}): TapEvent {
   return {
     id: newId(),
     provider_id: 'mr-parking',
+    direction: 'dropoff',
     device_ts: new Date().toISOString(),
     session_id: newId(),
     observer_label: 'OBS-1',

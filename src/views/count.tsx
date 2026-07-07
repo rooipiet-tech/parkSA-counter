@@ -56,7 +56,13 @@ export function CountView({ ctx }: { ctx: AppCtx }) {
       </div>
       <div class="tile-grid">
         {visible.map((p) => (
-          <Tile key={p.id} provider={p} count={ctx.queue.getCountFor(p.id)} onTap={ctx.actions.tap} />
+          <Tile
+            key={p.id}
+            provider={p}
+            dropoffCount={ctx.queue.getCountFor(p.id, 'dropoff')}
+            pickupCount={ctx.queue.getCountFor(p.id, 'pickup')}
+            onTap={ctx.actions.tap}
+          />
         ))}
       </div>
     </div>

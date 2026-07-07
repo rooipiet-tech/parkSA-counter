@@ -182,44 +182,85 @@ label {
    tiles fit a 390x844 viewport with no mid-count scrolling. */
 .tile-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* minmax(0, 1fr): let a column shrink below its content's min width so a long
+     provider name (nowrap + ellipsis) can never widen a track past the fold. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   grid-auto-rows: 1fr;
-  gap: 0.5rem;
+  gap: 0.4rem;
   flex: 1;
   min-height: 0;
 }
 
+/* AD-2: each provider tile is a name strip over two independently-tappable
+   coloured halves (Drop-off amber / Pick-up teal). */
 .tile {
-  background: var(--tile);
-  border: 1px solid #34435a;
-  border-radius: 12px;
-  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.tile-name {
+  font-size: 0.8rem;
+  line-height: 1.1;
+  text-align: center;
+  padding: 1px 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #c8d4e0;
+}
+
+.tile-half {
+  flex: 1 1 0;
+  min-height: 44px; /* POL-06: each half stays a comfortable touch target */
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.3rem;
+  gap: 0.1rem;
+  padding: 0.2rem 0.3rem;
+  border-radius: 8px;
   user-select: none;
-  /* POL-01: the grid fits the viewport, so a touch that starts on a tile must
+  /* POL-01: the grid fits the viewport, so a touch that starts on a half must
      never initiate a scroll (which would fire a phantom-tap pointercancel). */
   touch-action: none;
 }
 
-.tile.pressed {
-  background: var(--tile-pressed);
-  border-color: var(--accent);
+.tile-half-dropoff {
+  background: #4a3510;
+  border: 1px solid var(--warn);
+  color: #f5c56a;
 }
 
-.tile-name {
-  font-size: 0.95rem;
-  text-align: center;
-  padding: 0 0.3rem;
+.tile-half-dropoff.pressed {
+  background: #6f4e13;
+  border-color: #ffcf6e;
 }
 
-.tile-count {
-  font-size: 2rem;
+.tile-half-pickup {
+  background: #103a3a;
+  border: 1px solid #26b5aa;
+  color: #5fd8cd;
+}
+
+.tile-half-pickup.pressed {
+  background: #175d5b;
+  border-color: #55e6da;
+}
+
+.tile-half-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  opacity: 0.9;
+}
+
+.tile-half-count {
+  font-size: 1.5rem;
   font-weight: 800;
-  color: var(--accent);
+  line-height: 1;
 }
 
 .provider-list {
@@ -262,6 +303,13 @@ label {
 
 .scroll-x {
   overflow-x: auto;
+}
+
+/* AD-4: small direction label in the grouped drop-off/pick-up dashboard rows. */
+.dir-label {
+  color: #9fb2c4;
+  font-size: 0.78rem;
+  white-space: nowrap;
 }
 
 table {

@@ -2,9 +2,10 @@ import { effectiveTs, tombstoneSet, type DateRange } from './aggregate.ts';
 import { eachSastDate, sastBinRangeUtc, toSastDate, toSastHour } from './sast.ts';
 import type { Provider, Session, TapEvent, Tombstone } from './types.ts';
 
-/** Frozen raw-events CSV header (AC-19/AC-25). Do not reorder. */
+/** Frozen raw-events CSV header (AC-19/AC-25, amended by AD-5: `direction`
+ *  inserted after provider_name). Do not reorder. */
 export const RAW_CSV_HEADER =
-  'provider_id,provider_name,event_id,device_ts,received_at,synced_offline,session_id,observer_label,location_label,tombstoned,clock_suspect';
+  'provider_id,provider_name,direction,event_id,device_ts,received_at,synced_offline,session_id,observer_label,location_label,tombstoned,clock_suspect';
 
 /** Frozen coverage CSV header. */
 export const COVERAGE_CSV_HEADER = 'date,hour,covered,event_count';
@@ -51,6 +52,7 @@ export function exportCsv({ events, tombstones, providers, range }: CsvInputs): 
       [
         e.provider_id,
         names.get(e.provider_id) ?? e.provider_id,
+        e.direction,
         e.id,
         e.device_ts,
         e.received_at ?? '',

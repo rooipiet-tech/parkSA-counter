@@ -36,8 +36,8 @@ test('50 offline taps with a mid-session offline reload sync losslessly on recon
   expect(state.pendingCount).toBe(25);
   expect(state.events.every((e) => e.synced_offline)).toBe(true);
   // Tile counts restored from the persisted session log.
-  await expect(page.getByTestId('count-mr-parking')).toHaveText('10');
-  await expect(page.getByTestId('count-safe-car')).toHaveText('8');
+  await expect(page.getByTestId('count-mr-parking-dropoff')).toHaveText('10');
+  await expect(page.getByTestId('count-safe-car-dropoff')).toHaveText('8');
 
   const secondHalf: Record<string, number> = { 'mr-parking': 10, 'safe-car': 7, eazypark: 8 };
   for (const [pid, n] of Object.entries(secondHalf)) await tapTile(page, pid, n);

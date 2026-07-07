@@ -6,7 +6,7 @@ import { openTestQueue } from './helpers.ts';
 describe('idempotent sync (AC-08)', () => {
   it('(a) re-sending an already-accepted 10-event batch never duplicates', async () => {
     const { queue } = await openTestQueue();
-    for (let i = 0; i < 10; i++) queue.enqueueTap('mr-parking');
+    for (let i = 0; i < 10; i++) queue.enqueueTap('mr-parking', 'dropoff');
     const adapter = new StubAdapter();
     await queue.flush(adapter);
     expect(await adapter.listEvents()).toHaveLength(10);
@@ -25,7 +25,7 @@ describe('idempotent sync (AC-08)', () => {
 
   it('(b) fault AFTER server accept but before local ack: retry drains without duplicates', async () => {
     const { queue } = await openTestQueue();
-    for (let i = 0; i < 10; i++) queue.enqueueTap('safe-car');
+    for (let i = 0; i < 10; i++) queue.enqueueTap('safe-car', 'dropoff');
     const adapter = new StubAdapter();
     adapter.failAfterAcceptOnce();
 
@@ -41,7 +41,7 @@ describe('idempotent sync (AC-08)', () => {
 
   it('(c) app restart mid-flush: a new queue over the same IndexedDB re-flushes to exactly 10', async () => {
     const { queue, dbName } = await openTestQueue();
-    for (let i = 0; i < 10; i++) queue.enqueueTap('eazypark');
+    for (let i = 0; i < 10; i++) queue.enqueueTap('eazypark', 'dropoff');
     const adapter = new StubAdapter();
     adapter.failAfterAcceptOnce();
     await expect(queue.flush(adapter)).rejects.toThrow();
@@ -60,9 +60,9 @@ describe('idempotent sync (AC-08)', () => {
 
   it('flush order is sessions -> skew -> events -> tombstones (load-bearing for the no-FK design)', async () => {
     const { queue } = await openTestQueue();
-    queue.enqueueTap('mr-parking');
+    queue.enqueueTap('mr-parking', 'dropoff');
     queue.undoLast();
-    queue.enqueueTap('mr-parking');
+    queue.enqueueTap('mr-parking', 'dropoff');
 
     const order: string[] = [];
     const adapter = new StubAdapter();

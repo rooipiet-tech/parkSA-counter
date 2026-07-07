@@ -34,15 +34,15 @@ describe('backend outage is non-blocking (AC-24 / DC-13)', () => {
       onRetryScheduled: (d) => delays.push(d)
     });
 
-    queue.enqueueTap('mr-parking');
+    queue.enqueueTap('mr-parking', 'dropoff');
     engine.start(); // init attempt fails -> schedules the first retry
     await settle();
     expect(delays).toEqual([1_000]);
 
     // Counting is never blocked by sync failures.
-    queue.enqueueTap('safe-car');
-    queue.enqueueTap('safe-car');
-    expect(queue.getCountFor('safe-car')).toBe(2);
+    queue.enqueueTap('safe-car', 'dropoff');
+    queue.enqueueTap('safe-car', 'dropoff');
+    expect(queue.getCountFor('safe-car', 'dropoff')).toBe(2);
     expect(await queue.pendingCount()).toBe(3);
 
     // Let several retries fail: backoff delays must strictly increase, capped.

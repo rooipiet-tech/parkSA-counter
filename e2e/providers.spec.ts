@@ -23,9 +23,9 @@ test('(a) add creates a tappable tile immediately, no redeploy (AC-17)', async (
   await expect(page.getByTestId('provider-row-test-park')).toBeVisible();
   await page.getByTestId('settings-back').click();
 
-  await expect(page.getByTestId('tile-test-park')).toBeVisible();
+  await expect(page.getByTestId('provider-tile-test-park')).toBeVisible();
   await tapTile(page, 'test-park', 1);
-  await expect(page.getByTestId('count-test-park')).toHaveText('1');
+  await expect(page.getByTestId('count-test-park-dropoff')).toHaveText('1');
   const state = await getQueueState(page);
   expect(state.events.at(-1)!.provider_id).toBe('test-park');
 });
@@ -42,7 +42,7 @@ test('(b) rename re-labels history: same provider_id, same counts, new name (AC-
   await page.getByTestId('settings-back').click();
 
   // Tile relabels immediately.
-  await expect(page.getByTestId('tile-mr-parking')).toContainText('Mister Parking');
+  await expect(page.getByTestId('provider-tile-mr-parking')).toContainText('Mister Parking');
 
   // Dashboard row shows the new name with the historical count.
   await page.getByTestId('nav-dashboard').click();
@@ -65,8 +65,8 @@ test('(c) hide removes the tile but history stays in aggregates and CSV (AC-17)'
   await longPressSettingsOpen(page);
   await page.getByTestId('provider-hide-safe-car').click();
   await page.getByTestId('settings-back').click();
-  await expect(page.getByTestId('tile-safe-car')).toHaveCount(0);
-  await expect(page.getByTestId('tile-mr-parking')).toBeVisible(); // others intact
+  await expect(page.getByTestId('provider-tile-safe-car')).toHaveCount(0);
+  await expect(page.getByTestId('provider-tile-mr-parking')).toBeVisible(); // others intact
 
   await page.getByTestId('nav-dashboard').click();
   await expect(page.getByTestId('dash-total-safe-car')).toHaveText('2');
@@ -85,11 +85,11 @@ test('(d) reorder to position 1 updates the counting screen order (AC-17)', asyn
   await page.getByTestId('settings-back').click();
 
   const order = await page.evaluate(() =>
-    Array.from(document.querySelectorAll('[data-testid^=tile-]')).map((el) =>
+    Array.from(document.querySelectorAll('[data-testid^=provider-tile-]')).map((el) =>
       el.getAttribute('data-testid')
     )
   );
-  expect(order[0]).toBe('tile-eazypark');
+  expect(order[0]).toBe('provider-tile-eazypark');
   expect(order).toHaveLength(12);
 });
 

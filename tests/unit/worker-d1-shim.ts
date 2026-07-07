@@ -38,13 +38,15 @@ class ShimDb implements D1Like {
   }
 }
 
-const MIGRATION = readFileSync(join(process.cwd(), 'worker', 'migrations', '0001_init.sql'), 'utf8');
+const MIGRATIONS = ['0001_init.sql', '0002_direction.sql'].map((f) =>
+  readFileSync(join(process.cwd(), 'worker', 'migrations', f), 'utf8')
+);
 
 export const PIN = '1234';
 
 export function freshDb(): D1Like {
   const db = new Database(':memory:');
-  db.exec(MIGRATION);
+  for (const migration of MIGRATIONS) db.exec(migration);
   return new ShimDb(db);
 }
 

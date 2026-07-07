@@ -8,10 +8,14 @@ export interface Provider {
   is_permanent: boolean;
 }
 
+/** Which half of a provider tile recorded the tap. */
+export type TapDirection = 'dropoff' | 'pickup';
+
 /** A single tap event. Client-generated UUID id is the primary key. */
 export interface TapEvent {
   id: string;
   provider_id: string;
+  direction: TapDirection; // set CLIENT-side at tap time (which tile half was pressed)
   device_ts: string; // ISO timestamp captured on the device at tap time
   session_id: string;
   observer_label: string;

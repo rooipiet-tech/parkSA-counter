@@ -5,8 +5,8 @@ import { openTestQueue } from './helpers.ts';
 describe('clock-skew audit (AC-25 / DC-08)', () => {
   it('|skew| > 120s stamps clock_suspect=true on flushed events', async () => {
     const { queue } = await openTestQueue();
-    queue.enqueueTap('mr-parking');
-    queue.enqueueTap('safe-car');
+    queue.enqueueTap('mr-parking', 'dropoff');
+    queue.enqueueTap('safe-car', 'pickup');
     const adapter = new StubAdapter();
     adapter.setClockOffset(5 * 60_000); // server 5 minutes ahead
     await queue.flush(adapter);
@@ -17,7 +17,7 @@ describe('clock-skew audit (AC-25 / DC-08)', () => {
 
   it('|skew| <= 120s leaves clock_suspect=false', async () => {
     const { queue } = await openTestQueue();
-    queue.enqueueTap('mr-parking');
+    queue.enqueueTap('mr-parking', 'dropoff');
     const adapter = new StubAdapter();
     adapter.setClockOffset(30_000); // 30s: within tolerance
     await queue.flush(adapter);
@@ -28,7 +28,7 @@ describe('clock-skew audit (AC-25 / DC-08)', () => {
 
   it('negative skew beyond the limit is also suspect', async () => {
     const { queue } = await openTestQueue();
-    queue.enqueueTap('mr-parking');
+    queue.enqueueTap('mr-parking', 'dropoff');
     const adapter = new StubAdapter();
     adapter.setClockOffset(-5 * 60_000);
     await queue.flush(adapter);

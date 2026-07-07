@@ -49,6 +49,7 @@ function toEvent(r: Record<string, unknown>): ServerEvent {
   return {
     id: String(r.id),
     provider_id: String(r.provider_id),
+    direction: r.direction === 'pickup' ? 'pickup' : 'dropoff',
     device_ts: String(r.device_ts),
     session_id: String(r.session_id),
     observer_label: String(r.observer_label),
@@ -89,14 +90,15 @@ export async function insertEvents(db: D1Like, events: TapEvent[]): Promise<void
   const receivedAt = new Date().toISOString();
   const sql =
     'INSERT OR IGNORE INTO events ' +
-    '(id, provider_id, device_ts, session_id, observer_label, location_label, synced_offline, clock_suspect, received_at) ' +
-    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)';
+    '(id, provider_id, direction, device_ts, session_id, observer_label, location_label, synced_offline, clock_suspect, received_at) ' +
+    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
   for (const e of events) {
     await db
       .prepare(sql)
       .bind(
         e.id,
         e.provider_id,
+        e.direction === 'pickup' ? 'pickup' : 'dropoff',
         e.device_ts,
         e.session_id,
         e.observer_label,

@@ -7,7 +7,7 @@ test('tap-to-visual-feedback stays under 200ms over 10 taps (AC-04)', async ({ p
   await startSession(page);
 
   const deltas = await page.evaluate(async () => {
-    const tile = document.querySelector('[data-testid=tile-mr-parking]')!;
+    const tile = document.querySelector('[data-testid=tile-mr-parking-dropoff]')!;
     const out: number[] = [];
     for (let i = 0; i < 10; i++) {
       const acknowledged = new Promise<number>((resolve) => {
@@ -40,14 +40,15 @@ test('tiles show running per-session counts and reset to 0 on a new session (AC-
   await unlock(page);
   await startSession(page);
 
-  await tapTile(page, 'mr-parking', 3);
-  await tapTile(page, 'safe-car', 1);
-  await expect(page.getByTestId('count-mr-parking')).toHaveText('3');
-  await expect(page.getByTestId('count-safe-car')).toHaveText('1');
+  await tapTile(page, 'mr-parking', 3, 'dropoff');
+  await tapTile(page, 'safe-car', 1, 'pickup');
+  await expect(page.getByTestId('count-mr-parking-dropoff')).toHaveText('3');
+  await expect(page.getByTestId('count-mr-parking-pickup')).toHaveText('0'); // other half untouched
+  await expect(page.getByTestId('count-safe-car-pickup')).toHaveText('1');
 
   await endSession(page);
   await expect(page.getByTestId('session-start')).toBeVisible();
   await startSession(page, 'OBS-2');
-  await expect(page.getByTestId('count-mr-parking')).toHaveText('0');
-  await expect(page.getByTestId('count-safe-car')).toHaveText('0');
+  await expect(page.getByTestId('count-mr-parking-dropoff')).toHaveText('0');
+  await expect(page.getByTestId('count-safe-car-pickup')).toHaveText('0');
 });
