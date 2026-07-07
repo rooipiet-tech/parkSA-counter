@@ -2,7 +2,7 @@ import type { IDBPDatabase } from 'idb';
 import { openParkSaDb, DB_NAME, type ParkSaDb } from './db.ts';
 import { newId } from '../lib/ids.ts';
 import type { BackendAdapter } from '../adapters/types.ts';
-import type { LogRow, QueueState, Session, TapEvent } from '../lib/types.ts';
+import type { LogRow, QueueState, Session, TapDirection, TapEvent } from '../lib/types.ts';
 
 export interface TapQueueOptions {
   dbName?: string;
@@ -142,12 +142,13 @@ export class TapQueue {
    * updated and listeners fire before this returns; the IDB writes for BOTH
    * pendingEvents and sessionLog are issued in this same tick (one tx).
    */
-  enqueueTap(providerId: string): LogRow {
+  enqueueTap(providerId: string, direction: TapDirection): LogRow {
     const session = this.session;
     if (!session) throw new Error('no active session');
     const row: LogRow = {
       id: newId(),
       provider_id: providerId,
+      direction,
       device_ts: new Date(this.opts.now()).toISOString(),
       session_id: session.id,
       observer_label: session.observer_label,
@@ -171,16 +172,23 @@ export class TapQueue {
     return row;
   }
 
-  /** Session tally for a provider: non-tombstoned taps in the current session. */
-  getCountFor(providerId: string): number {
-    return this.mirror.filter((r) => r.provider_id === providerId && !r.tombstoned).length;
+  /**
+   * Session tally for one half of a provider tile: non-tombstoned taps of the
+   * given (provider, direction) in the current session.
+   */
+  getCountFor(providerId: string, direction: TapDirection): number {
+    return this.mirror.filter(
+      (r) => r.provider_id === providerId && r.direction === direction && !r.tombstoned
+    ).length;
   }
 
+  /** Per-(provider, direction) tallies keyed `${provider_id}|${direction}`. */
   getCounts(): Map<string, number> {
     const counts = new Map<string, number>();
     for (const r of this.mirror) {
       if (r.tombstoned) continue;
-      counts.set(r.provider_id, (counts.get(r.provider_id) ?? 0) + 1);
+      const key = `${r.provider_id}|${r.direction}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
     }
     return counts;
   }

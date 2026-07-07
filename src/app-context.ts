@@ -5,7 +5,7 @@ import { createStore, type Store } from './lib/store.ts';
 import { exportCsv, exportCoverageCsv } from './lib/csv.ts';
 import { newId } from './lib/ids.ts';
 import { isValidObserverCode } from './lib/validate.ts';
-import type { Provider, Session } from './lib/types.ts';
+import type { Provider, Session, TapDirection } from './lib/types.ts';
 import type { DateRange } from './lib/aggregate.ts';
 
 export type View = 'count' | 'settings' | 'dashboard';
@@ -52,7 +52,7 @@ export interface AppCtx {
     endSession(): Promise<void>;
     closeSessionRetroactively(sessionId: string, endTs?: string): Promise<void>;
     listOpenSessions(): Promise<Session[]>;
-    tap(providerId: string): number;
+    tap(providerId: string, direction: TapDirection): number;
     undo(): void;
     refreshProviders(): Promise<void>;
     setForceOffline(v: boolean): void;
@@ -210,9 +210,9 @@ export async function createAppCtx(adapter: BackendAdapter): Promise<AppCtx> {
         return sessions.filter((s) => s.end_ts == null && s.id !== currentId);
       },
 
-      tap(providerId: string): number {
-        queue.enqueueTap(providerId);
-        return queue.getCountFor(providerId);
+      tap(providerId: string, direction: TapDirection): number {
+        queue.enqueueTap(providerId, direction);
+        return queue.getCountFor(providerId, direction);
       },
 
       undo() {
