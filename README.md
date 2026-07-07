@@ -10,11 +10,16 @@ are built in.
 - **Storage:** IndexedDB queue (`pendingEvents`, `pendingTombstones`,
   `pendingSessions`, `sessionLog`, `meta`) — pending rows are removed only
   after the backend acks; the session log survives sync and reload.
-- **Backends:** a single `BackendAdapter` interface with two implementations:
-  an in-memory **stub** (the default whenever Supabase env vars are absent —
-  all tests run against it) and a **Supabase** adapter
-  (`src/adapters/supabase.ts`) that mirrors the contract-tested stub
-  semantics.
+- **Backends:** a single `BackendAdapter` interface with three
+  implementations: an in-memory **stub** (the default whenever no backend env
+  vars are set — the shared contract suite runs against it), a **Supabase**
+  adapter (`src/adapters/supabase.ts`), and a **Cloudflare Worker + D1** REST
+  adapter (`src/adapters/rest.ts`, backed by `worker/`). All three mirror the
+  same contract-tested semantics; the REST adapter is exercised end-to-end in
+  node over a better-sqlite3 D1 shim
+  (`tests/unit/rest-adapter-contract.test.ts`). Selection priority:
+  `VITE_API_URL` (Cloudflare) → `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY`
+  (Supabase) → stub.
 - **Undo:** append-only tombstones. Events are never updated or deleted;
   readers anti-join `tombstones` on `event_id`.
 - **Time:** all hour/day-of-week/date binning goes through the single module
@@ -44,8 +49,13 @@ Configuration (build-time env vars):
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `VITE_APP_PIN` | `1234` | Shared unlock PIN |
-| `VITE_SUPABASE_URL` | unset | Supabase project URL (unset ⇒ stub backend) |
-| `VITE_SUPABASE_ANON_KEY` | unset | Supabase anon key (unset ⇒ stub backend) |
+| `VITE_API_URL` | unset | Cloudflare Worker URL (set ⇒ REST backend, highest priority) |
+| `VITE_API_PIN` | `VITE_APP_PIN` | Bearer PIN sent to the Worker (must match its `PARKSA_PIN` secret) |
+| `VITE_SUPABASE_URL` | unset | Supabase project URL (used only if `VITE_API_URL` unset) |
+| `VITE_SUPABASE_ANON_KEY` | unset | Supabase anon key (used only if `VITE_API_URL` unset) |
+
+The Cloudflare backend (Worker + D1) lives in `worker/`; see **DEPLOY.md →
+Backend options → B** for the `wrangler` runbook.
 
 URL hooks (used by the tests): `?fresh=1` wipes localStorage/IndexedDB before
 boot (then strips itself from the URL) — but it **refuses to wipe when unsynced
@@ -219,7 +229,8 @@ counts per provider.
 src/lib/sast.ts          single SAST (UTC+2) conversion point — all binning
 src/lib/aggregate.ts     client-side aggregation + per-bin session coverage
 src/lib/csv.ts           raw-events CSV + coverage CSV serializers
-src/adapters/            BackendAdapter contract, stub (default), Supabase
+src/adapters/            BackendAdapter contract, stub (default), Supabase, rest
+worker/                  Cloudflare Worker + D1 REST backend (index, handlers, migrations)
 src/queue/               IndexedDB queue, flush, append-only undo
 src/sync/engine.ts       foreground-only sync triggers + exponential backoff
 src/seed/                seed providers + deterministic synthetic month
