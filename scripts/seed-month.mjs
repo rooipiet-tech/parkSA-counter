@@ -35,9 +35,13 @@ const fixture = {
   byHour: agg.byHour,
   byDow: agg.byDow,
   byDate: agg.byDate,
+  byHourDir: agg.byHourDir,
+  byDowDir: agg.byDowDir,
+  byDateDir: agg.byDateDir,
   coverage: agg.coverage,
   total: agg.total,
-  totalsByProvider: agg.totalsByProvider
+  totalsByProvider: agg.totalsByProvider,
+  totalsByProviderDir: agg.totalsByProviderDir
 };
 
 const outDir = join(root, 'fixtures');

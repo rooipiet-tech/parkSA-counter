@@ -1,5 +1,11 @@
 import { eachSastDate, sastBinKey, sastBinRangeUtc, toSastDate, toSastDow, toSastHour } from './sast.ts';
-import type { Provider, Session, TapEvent, Tombstone } from './types.ts';
+import type { Provider, Session, TapDirection, TapEvent, Tombstone } from './types.ts';
+
+/** A value split by tap direction (drop-off vs pick-up), alongside a total. */
+export interface DirSplit<T> {
+  dropoff: T;
+  pickup: T;
+}
 
 /**
  * Client-side aggregation (identical over stub and Supabase data).
@@ -16,18 +22,24 @@ export interface DateRange {
 }
 
 export interface Aggregates {
-  /** provider_id -> 24 hour-of-day counts (SAST). */
+  /** provider_id -> 24 hour-of-day counts (SAST), both directions combined. */
   byHour: Record<string, number[]>;
-  /** provider_id -> 7 day-of-week counts (SAST, 0 = Sunday). */
+  /** provider_id -> 7 day-of-week counts (SAST, 0 = Sunday), combined. */
   byDow: Record<string, number[]>;
-  /** provider_id -> date -> count (every date in range present). */
+  /** provider_id -> date -> count (every date in range present), combined. */
   byDate: Record<string, Record<string, number>>;
+  /** AD-4: same cuts split by direction. dropoff + pickup === the combined cut. */
+  byHourDir: Record<string, DirSplit<number[]>>;
+  byDowDir: Record<string, DirSplit<number[]>>;
+  byDateDir: Record<string, DirSplit<Record<string, number>>>;
   /** '<date>T<hour>' -> was any session observing during that bin? */
   coverage: Record<string, boolean>;
   /** Total non-tombstoned events in range. */
   total: number;
-  /** provider_id -> total non-tombstoned events in range. */
+  /** provider_id -> total non-tombstoned events in range (combined). */
   totalsByProvider: Record<string, number>;
+  /** provider_id -> per-direction totals in range. */
+  totalsByProviderDir: Record<string, DirSplit<number>>;
 }
 
 export function effectiveTs(e: TapEvent): string {
@@ -52,15 +64,27 @@ export function aggregate(
   const byHour: Record<string, number[]> = {};
   const byDow: Record<string, number[]> = {};
   const byDate: Record<string, Record<string, number>> = {};
+  const byHourDir: Record<string, DirSplit<number[]>> = {};
+  const byDowDir: Record<string, DirSplit<number[]>> = {};
+  const byDateDir: Record<string, DirSplit<Record<string, number>>> = {};
   const totalsByProvider: Record<string, number> = {};
+  const totalsByProviderDir: Record<string, DirSplit<number>> = {};
   const providerIds = new Set(providers.map((p) => p.id));
   for (const e of events) providerIds.add(e.provider_id);
+  const zeroDates = (): Record<string, number> => {
+    const o: Record<string, number> = {};
+    for (const d of dates) o[d] = 0;
+    return o;
+  };
   for (const pid of providerIds) {
     byHour[pid] = new Array(24).fill(0);
     byDow[pid] = new Array(7).fill(0);
-    byDate[pid] = {};
-    for (const d of dates) byDate[pid][d] = 0;
+    byDate[pid] = zeroDates();
+    byHourDir[pid] = { dropoff: new Array(24).fill(0), pickup: new Array(24).fill(0) };
+    byDowDir[pid] = { dropoff: new Array(7).fill(0), pickup: new Array(7).fill(0) };
+    byDateDir[pid] = { dropoff: zeroDates(), pickup: zeroDates() };
     totalsByProvider[pid] = 0;
+    totalsByProviderDir[pid] = { dropoff: 0, pickup: 0 };
   }
 
   let total = 0;
@@ -69,10 +93,17 @@ export function aggregate(
     const ts = effectiveTs(e);
     const date = toSastDate(ts);
     if (date < range.from || date > range.to) continue;
-    byHour[e.provider_id][toSastHour(ts)]++;
-    byDow[e.provider_id][toSastDow(ts)]++;
+    const hour = toSastHour(ts);
+    const dow = toSastDow(ts);
+    const dir: TapDirection = e.direction === 'pickup' ? 'pickup' : 'dropoff';
+    byHour[e.provider_id][hour]++;
+    byDow[e.provider_id][dow]++;
     byDate[e.provider_id][date]++;
     totalsByProvider[e.provider_id]++;
+    byHourDir[e.provider_id][dir][hour]++;
+    byDowDir[e.provider_id][dir][dow]++;
+    byDateDir[e.provider_id][dir][date]++;
+    totalsByProviderDir[e.provider_id][dir]++;
     total++;
   }
 
@@ -92,5 +123,16 @@ export function aggregate(
     }
   }
 
-  return { byHour, byDow, byDate, coverage, total, totalsByProvider };
+  return {
+    byHour,
+    byDow,
+    byDate,
+    byHourDir,
+    byDowDir,
+    byDateDir,
+    coverage,
+    total,
+    totalsByProvider,
+    totalsByProviderDir
+  };
 }

@@ -1,3 +1,4 @@
+import { Fragment } from 'preact';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { aggregate, type DateRange } from '../lib/aggregate.ts';
 import { DOW_NAMES, eachSastDate, toSastDate } from '../lib/sast.ts';
@@ -23,10 +24,63 @@ function download(filename: string, text: string) {
   URL.revokeObjectURL(url);
 }
 
+type CutKey = number | string;
+
+/**
+ * Three grouped rows for one provider in a cut table (AD-4): a combined Total
+ * row plus Drop-off and Pick-up rows. Keeping the Total row's cell testids as
+ * `cell-<cut>-<pid>-<key>` (unsuffixed) preserves the original combined-count
+ * contract; the direction rows add `-dropoff` / `-pickup` suffixes.
+ */
+function DirRows({
+  name,
+  keys,
+  total,
+  dir,
+  testid
+}: {
+  name: string;
+  keys: CutKey[];
+  total: (key: CutKey) => number;
+  dir: (direction: 'dropoff' | 'pickup', key: CutKey) => number;
+  testid: (direction: '' | 'dropoff' | 'pickup', key: CutKey) => string;
+}) {
+  return (
+    <Fragment>
+      <tr>
+        <td rowSpan={3}>{name}</td>
+        <td class="dir-label">Total</td>
+        {keys.map((k) => (
+          <td key={String(k)} data-testid={testid('', k)}>
+            {total(k)}
+          </td>
+        ))}
+      </tr>
+      <tr>
+        <td class="dir-label">Drop-off</td>
+        {keys.map((k) => (
+          <td key={String(k)} data-testid={testid('dropoff', k)}>
+            {dir('dropoff', k)}
+          </td>
+        ))}
+      </tr>
+      <tr>
+        <td class="dir-label">Pick-up</td>
+        {keys.map((k) => (
+          <td key={String(k)} data-testid={testid('pickup', k)}>
+            {dir('pickup', k)}
+          </td>
+        ))}
+      </tr>
+    </Fragment>
+  );
+}
+
 /**
  * Read-only analysis dashboard: provider x hour-of-day, provider x
- * day-of-week and provider x date over a selectable SAST date range.
- * No event-mutating controls exist on this view.
+ * day-of-week and provider x date over a selectable SAST date range, each cut
+ * broken down by direction (drop-off / pick-up / total). No event-mutating
+ * controls exist on this view.
  */
 export function DashboardView({ ctx }: { ctx: AppCtx }) {
   const today = toSastDate(Date.now());
@@ -108,11 +162,25 @@ export function DashboardView({ ctx }: { ctx: AppCtx }) {
         <div class="agg-tables">
           <h3>Totals ({agg.total} events in range, tombstones excluded)</h3>
           <table>
+            <thead>
+              <tr>
+                <th>Provider</th>
+                <th>Total</th>
+                <th>Drop-off</th>
+                <th>Pick-up</th>
+              </tr>
+            </thead>
             <tbody>
               {providers.map((p) => (
                 <tr key={p.id}>
                   <td data-testid={`dash-provider-${p.id}`}>{p.name}</td>
                   <td data-testid={`dash-total-${p.id}`}>{agg.totalsByProvider[p.id] ?? 0}</td>
+                  <td data-testid={`dash-total-${p.id}-dropoff`}>
+                    {agg.totalsByProviderDir[p.id]?.dropoff ?? 0}
+                  </td>
+                  <td data-testid={`dash-total-${p.id}-pickup`}>
+                    {agg.totalsByProviderDir[p.id]?.pickup ?? 0}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -124,6 +192,7 @@ export function DashboardView({ ctx }: { ctx: AppCtx }) {
               <thead>
                 <tr>
                   <th>Provider</th>
+                  <th>Dir</th>
                   {Array.from({ length: 24 }, (_, h) => (
                     <th key={h}>{h}</th>
                   ))}
@@ -131,14 +200,14 @@ export function DashboardView({ ctx }: { ctx: AppCtx }) {
               </thead>
               <tbody>
                 {providers.map((p) => (
-                  <tr key={p.id}>
-                    <td>{p.name}</td>
-                    {Array.from({ length: 24 }, (_, h) => (
-                      <td key={h} data-testid={`cell-hour-${p.id}-${h}`}>
-                        {agg.byHour[p.id]?.[h] ?? 0}
-                      </td>
-                    ))}
-                  </tr>
+                  <DirRows
+                    key={p.id}
+                    name={p.name}
+                    keys={Array.from({ length: 24 }, (_, h) => h)}
+                    total={(h) => agg.byHour[p.id]?.[h as number] ?? 0}
+                    dir={(d, h) => agg.byHourDir[p.id]?.[d][h as number] ?? 0}
+                    testid={(d, h) => `cell-hour-${p.id}-${h}${d ? `-${d}` : ''}`}
+                  />
                 ))}
               </tbody>
             </table>
@@ -150,6 +219,7 @@ export function DashboardView({ ctx }: { ctx: AppCtx }) {
               <thead>
                 <tr>
                   <th>Provider</th>
+                  <th>Dir</th>
                   {DOW_NAMES.map((d) => (
                     <th key={d}>{d.slice(0, 3)}</th>
                   ))}
@@ -157,14 +227,14 @@ export function DashboardView({ ctx }: { ctx: AppCtx }) {
               </thead>
               <tbody>
                 {providers.map((p) => (
-                  <tr key={p.id}>
-                    <td>{p.name}</td>
-                    {DOW_NAMES.map((_, d) => (
-                      <td key={d} data-testid={`cell-dow-${p.id}-${d}`}>
-                        {agg.byDow[p.id]?.[d] ?? 0}
-                      </td>
-                    ))}
-                  </tr>
+                  <DirRows
+                    key={p.id}
+                    name={p.name}
+                    keys={DOW_NAMES.map((_, d) => d)}
+                    total={(d) => agg.byDow[p.id]?.[d as number] ?? 0}
+                    dir={(dir, d) => agg.byDowDir[p.id]?.[dir][d as number] ?? 0}
+                    testid={(dir, d) => `cell-dow-${p.id}-${d}${dir ? `-${dir}` : ''}`}
+                  />
                 ))}
               </tbody>
             </table>
@@ -176,6 +246,7 @@ export function DashboardView({ ctx }: { ctx: AppCtx }) {
               <thead>
                 <tr>
                   <th>Provider</th>
+                  <th>Dir</th>
                   {dates.map((d) => (
                     <th key={d}>{d.slice(5)}</th>
                   ))}
@@ -183,14 +254,14 @@ export function DashboardView({ ctx }: { ctx: AppCtx }) {
               </thead>
               <tbody>
                 {providers.map((p) => (
-                  <tr key={p.id}>
-                    <td>{p.name}</td>
-                    {dates.map((d) => (
-                      <td key={d} data-testid={`cell-date-${p.id}-${d}`}>
-                        {agg.byDate[p.id]?.[d] ?? 0}
-                      </td>
-                    ))}
-                  </tr>
+                  <DirRows
+                    key={p.id}
+                    name={p.name}
+                    keys={dates}
+                    total={(d) => agg.byDate[p.id]?.[d as string] ?? 0}
+                    dir={(dir, d) => agg.byDateDir[p.id]?.[dir][d as string] ?? 0}
+                    testid={(dir, d) => `cell-date-${p.id}-${d}${dir ? `-${dir}` : ''}`}
+                  />
                 ))}
               </tbody>
             </table>
