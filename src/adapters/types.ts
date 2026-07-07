@@ -1,9 +1,10 @@
 import type { Provider, Session, ServerEvent, TapEvent, Tombstone } from '../lib/types.ts';
 
 /**
- * Backend adapter contract. Two implementations:
- *  - StubAdapter (in-memory, default when no Supabase env vars are present)
+ * Backend adapter contract. Implementations:
+ *  - StubAdapter (in-memory, default when no backend env vars are present)
  *  - SupabaseAdapter (thin mirror; never executed in the test loop)
+ *  - RestAdapter (Cloudflare Worker + D1; contract-tested over a node D1 shim)
  *
  * Invariants:
  *  - insertEvents is a batch upsert deduplicated on the client-generated UUID
@@ -17,7 +18,7 @@ import type { Provider, Session, ServerEvent, TapEvent, Tombstone } from '../lib
  *  - Provider hide/delete must be refused for is_permanent providers.
  */
 export interface BackendAdapter {
-  readonly kind: 'stub' | 'supabase';
+  readonly kind: 'stub' | 'supabase' | 'rest';
 
   insertEvents(events: TapEvent[]): Promise<void>;
   listEvents(): Promise<ServerEvent[]>;
