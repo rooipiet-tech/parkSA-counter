@@ -32,6 +32,22 @@ export function openParkSaDb(name: string = DB_NAME): Promise<IDBPDatabase<ParkS
   });
 }
 
+/**
+ * Count pending (unsynced) events without disturbing anything else. Used by
+ * the `?fresh=1` guard (RS-02) to refuse a destructive wipe that would drop
+ * unsynced taps. Returns 0 if the database does not yet exist.
+ */
+export async function countPendingEvents(name: string = DB_NAME): Promise<number> {
+  try {
+    const db = await openParkSaDb(name);
+    const n = await db.count('pendingEvents');
+    db.close();
+    return n;
+  } catch {
+    return 0;
+  }
+}
+
 export function deleteParkSaDb(name: string = DB_NAME): Promise<void> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.deleteDatabase(name);

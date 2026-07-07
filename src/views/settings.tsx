@@ -1,7 +1,9 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { useStore } from '../lib/store.ts';
 import { newId } from '../lib/ids.ts';
+import { formatSast } from '../lib/sast.ts';
 import type { AppCtx } from '../app-context.ts';
+import type { Session } from '../lib/types.ts';
 
 function slugify(name: string): string {
   const base = name
@@ -23,6 +25,12 @@ export function SettingsView({ ctx }: { ctx: AppCtx }) {
   const [newName, setNewName] = useState('');
   const [names, setNames] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [openSessions, setOpenSessions] = useState<Session[]>([]);
+
+  const loadOpenSessions = () => {
+    void ctx.actions.listOpenSessions().then(setOpenSessions);
+  };
+  useEffect(loadOpenSessions, [ctx]);
 
   const refresh = () => void ctx.actions.refreshProviders();
 
@@ -120,6 +128,30 @@ export function SettingsView({ ctx }: { ctx: AppCtx }) {
           Add provider
         </button>
       </div>
+      {/* AN-01: stale open sessions (never ended, not the resumed current one)
+          can be closed retroactively — end_source='retroactive'. */}
+      {openSessions.length > 0 && (
+        <div class="open-sessions" data-testid="open-sessions">
+          <h3>Open sessions (never ended)</h3>
+          <ul class="provider-list">
+            {openSessions.map((s) => (
+              <li key={s.id} data-testid={`open-session-${s.id}`}>
+                <span>
+                  {s.observer_label} @ {s.location_label} — started {formatSast(s.start_ts)}
+                </span>
+                <button
+                  data-testid={`retro-close-${s.id}`}
+                  onClick={() =>
+                    act(() => ctx.actions.closeSessionRetroactively(s.id).then(loadOpenSessions))
+                  }
+                >
+                  Close retroactively
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <button data-testid="settings-back" onClick={() => ctx.actions.navigate('count')}>
         Back to counting
       </button>

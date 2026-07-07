@@ -93,3 +93,16 @@ export function eachSastDate(from: string, to: string): string[] {
 export function sastBinKey(date: string, hour: number): string {
   return `${date}T${String(hour).padStart(2, '0')}`;
 }
+
+/**
+ * Human-readable SAST wall-clock stamp 'YYYY-MM-DD HH:MM:SS SAST' for display
+ * (POL-05). Not for binning — those go through the typed helpers above. The
+ * machine-readable ISO value is surfaced separately (data-iso attribute).
+ */
+export function formatSast(ts: TsInput): string {
+  const d = shifted(ts);
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const mm = String(d.getUTCMinutes()).padStart(2, '0');
+  const ss = String(d.getUTCSeconds()).padStart(2, '0');
+  return `${toSastDate(ts)} ${hh}:${mm}:${ss} SAST`;
+}

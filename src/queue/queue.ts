@@ -202,11 +202,15 @@ export class TapQueue {
     if (!target) return null;
     target.tombstoned = true;
     const tombstone = { event_id: target.id, created_at: new Date(this.opts.now()).toISOString() };
-    const rowCopy = { ...target };
+    const targetId = target.id;
     this.chain(async () => {
       const tx = this.db.transaction(['pendingTombstones', 'sessionLog'], 'readwrite');
       await tx.objectStore('pendingTombstones').put(tombstone);
-      await tx.objectStore('sessionLog').put(rowCopy);
+      // OR-F5: re-read the stored row and merge ONLY the tombstoned flag, so a
+      // concurrent flush ack that set synced=true on this row is not clobbered
+      // back to a stale copy (post-reload agent reads stay correct).
+      const stored = await tx.objectStore('sessionLog').get(targetId);
+      if (stored) await tx.objectStore('sessionLog').put({ ...stored, tombstoned: true });
       await tx.done;
     });
     this.notify();
@@ -253,7 +257,18 @@ export class TapQueue {
     const sessions = await this.db.getAll('pendingSessions');
     for (const s of sessions) {
       await adapter.upsertSession(s);
-      await this.db.delete('pendingSessions', s.id);
+      // OR-F1: an endSession/retroactive-close can update this row while the
+      // upsert above is in-flight. Delete ONLY if the row is byte-for-byte the
+      // copy we just acked; otherwise leave it queued so the newer end_ts/
+      // end_source syncs on the next flush (never a lost update).
+      const tx = this.db.transaction('pendingSessions', 'readwrite');
+      const current = (await tx.store.get(s.id)) as Session | undefined;
+      const unchanged =
+        current != null &&
+        (current.end_ts ?? null) === (s.end_ts ?? null) &&
+        (current.end_source ?? null) === (s.end_source ?? null);
+      if (unchanged) await tx.store.delete(s.id);
+      await tx.done;
     }
 
     // (2) clock-skew measurement for this batch (DC-08).

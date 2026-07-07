@@ -174,12 +174,11 @@ export class StubAdapter implements BackendAdapter {
     for (const p of rest) p.sort_order = order++;
   }
 
-  async deleteProvider(id: string): Promise<void> {
+  async deleteProvider(_id: string): Promise<void> {
     this.maybeFault();
-    const p = this.providers.get(id);
-    if (!p) return;
-    if (p.is_permanent) throw new Error('stub: cannot delete a permanent provider');
-    this.providers.delete(id);
+    // OR-F4: mirror the Supabase adapter / RLS — providers are NEVER deleted
+    // (anon has no DELETE policy). Hide them instead. Refuse for ALL ids.
+    throw new Error('stub: deleting providers is not supported (hide them instead)');
   }
 
   // ---- clock ----------------------------------------------------------------

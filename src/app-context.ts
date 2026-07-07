@@ -50,6 +50,8 @@ export interface AppCtx {
     unlock(pin: string): boolean;
     startSession(observer: string, location: string): { ok: boolean; error?: string };
     endSession(): Promise<void>;
+    closeSessionRetroactively(sessionId: string, endTs?: string): Promise<void>;
+    listOpenSessions(): Promise<Session[]>;
     tap(providerId: string): number;
     undo(): void;
     refreshProviders(): Promise<void>;
@@ -180,6 +182,32 @@ export async function createAppCtx(adapter: BackendAdapter): Promise<AppCtx> {
         await engine.trigger('session-end');
         const pending = await queue.pendingCount();
         stores.endWarning.set(pending > 0);
+      },
+
+      /**
+       * AN-01/OR-F3: close a never-ended (stale) session with
+       * end_source='retroactive'. Reachable both from the settings UI and from
+       * window.__PARKSA__.closeSessionRetroactively(). Does NOT run
+       * automatically against the session being resumed on reload (F10) — the
+       * caller must name a specific session id.
+       */
+      async closeSessionRetroactively(sessionId: string, endTs?: string) {
+        const serverSessions = await adapter.listSessions();
+        let target = serverSessions.find((s) => s.id === sessionId) ?? null;
+        const current = queue.currentSession();
+        if (!target && current?.id === sessionId) target = current;
+        if (!target) throw new Error(`no session ${sessionId}`);
+        await queue.closeSessionRetroactively(target, endTs);
+        if (stores.session.get()?.id === sessionId) stores.session.set(null);
+        await engine.trigger('retroactive-close');
+      },
+
+      /** Open (never-ended) sessions on the backend EXCLUDING the one currently
+       *  resumed on this device — the candidates for retroactive close. */
+      async listOpenSessions() {
+        const currentId = queue.currentSession()?.id ?? null;
+        const sessions = await adapter.listSessions();
+        return sessions.filter((s) => s.end_ts == null && s.id !== currentId);
       },
 
       tap(providerId: string): number {

@@ -1,5 +1,6 @@
-import { useRef } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 import { useStore } from '../lib/store.ts';
+import { formatSast } from '../lib/sast.ts';
 import { isIphoneUa, isStandalone } from '../lib/display-mode.ts';
 import { PinView } from './pin.tsx';
 import { CountView } from './count.tsx';
@@ -49,8 +50,12 @@ function Header({ ctx }: { ctx: AppCtx }) {
       <span class="badge" data-testid="unsynced-badge" title="Unsynced taps">
         {pending}
       </span>
-      <span data-testid="last-sync" title="Last successful sync">
-        {lastSync ? new Date(lastSync).toISOString() : 'never'}
+      <span
+        data-testid="last-sync"
+        data-iso={lastSync ? new Date(lastSync).toISOString() : ''}
+        title="Last successful sync (SAST)"
+      >
+        {lastSync ? formatSast(lastSync) : 'Never synced'}
       </span>
       <nav>
         <button data-testid="nav-count" onClick={() => ctx.actions.navigate('count')} disabled={view === 'count'}>
@@ -69,20 +74,50 @@ function Header({ ctx }: { ctx: AppCtx }) {
   );
 }
 
+const IOS_HINT_DISMISSED = 'parksa:iosHintDismissed';
+
 export function App({ ctx }: { ctx: AppCtx }) {
   const unlocked = useStore(ctx.stores.unlocked);
   const view = useStore(ctx.stores.view);
   const session = useStore(ctx.stores.session);
   const pending = useStore(ctx.stores.pending);
 
-  const showIosHint = isIphoneUa() && !isStandalone();
+  const [iosHintDismissed, setIosHintDismissed] = useState(() => {
+    try {
+      return localStorage.getItem(IOS_HINT_DISMISSED) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const dismissIosHint = () => {
+    try {
+      localStorage.setItem(IOS_HINT_DISMISSED, '1');
+    } catch {
+      /* ignore */
+    }
+    setIosHintDismissed(true);
+  };
+
+  // POL-07: compact + dismissable (persisted), but visible on first load for a
+  // non-standalone iPhone UA (AC-16). `?fresh=1` clears the dismissal so tests
+  // never leak it between runs.
+  const showIosHint = isIphoneUa() && !isStandalone() && !iosHintDismissed;
 
   return (
     <div class="app">
       {showIosHint && (
-        <div class="hint" data-testid="ios-install-hint">
-          For reliable offline storage on iPhone, add this app to your Home Screen: Share → Add to
-          Home Screen, then launch it from the icon.
+        <div class="hint hint-compact" data-testid="ios-install-hint">
+          <span>
+            iPhone: for reliable offline storage, add to Home Screen (Share → Add to Home Screen).
+          </span>
+          <button
+            class="hint-dismiss"
+            data-testid="ios-install-hint-dismiss"
+            aria-label="Dismiss install hint"
+            onClick={dismissIosHint}
+          >
+            ✕
+          </button>
         </div>
       )}
       {ctx.bootHadPending && pending > 0 && (

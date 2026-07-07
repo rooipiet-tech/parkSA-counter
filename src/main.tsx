@@ -3,7 +3,7 @@ import { registerSW } from 'virtual:pwa-register';
 import { createAdapter } from './adapters/index.ts';
 import { StubAdapter } from './adapters/stub.ts';
 import { generateMonth } from './seed/month.ts';
-import { deleteParkSaDb } from './queue/db.ts';
+import { countPendingEvents, deleteParkSaDb } from './queue/db.ts';
 import { createAppCtx } from './app-context.ts';
 import { installAgentApi } from './agent-api.ts';
 import { App } from './views/app.tsx';
@@ -28,14 +28,26 @@ async function boot() {
 
   // Test/agent hook: '?fresh=1' clears all local state BEFORE the app boots,
   // then strips itself from the URL so an in-test reload keeps state.
+  // RS-02: refuse the destructive wipe when unsynced taps exist, UNLESS an
+  // explicit '&force=1' is also present — this keeps the zero-loss guarantee
+  // in production while leaving test/agent fresh contexts (pending=0) unchanged.
   if (params.get('fresh') === '1') {
-    try {
-      localStorage.clear();
-    } catch {
-      /* ignore */
+    const forced = params.get('force') === '1';
+    const pending = forced ? 0 : await countPendingEvents();
+    if (pending === 0 || forced) {
+      try {
+        localStorage.clear();
+      } catch {
+        /* ignore */
+      }
+      await deleteParkSaDb();
+    } else {
+      console.warn(
+        `?fresh=1 ignored: ${pending} unsynced tap(s) would be lost. Add &force=1 to wipe anyway.`
+      );
     }
-    await deleteParkSaDb();
     params.delete('fresh');
+    params.delete('force');
     const qs = params.toString();
     history.replaceState(null, '', location.pathname + (qs ? `?${qs}` : '') + location.hash);
   }

@@ -42,7 +42,9 @@ CREATE TABLE IF NOT EXISTS sessions (
   end_ts timestamptz,
   end_source text CHECK (end_source IN ('normal', 'retroactive')),
   observer_label text NOT NULL,
-  location_label text NOT NULL
+  location_label text NOT NULL,
+  -- RS-04: a session can never end before it started.
+  CONSTRAINT sessions_end_after_start CHECK (end_ts IS NULL OR end_ts >= start_ts)
 );
 
 CREATE TABLE IF NOT EXISTS tombstones (
@@ -79,29 +81,47 @@ ALTER TABLE events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tombstones ENABLE ROW LEVEL SECURITY;
 
+-- MIG-01: DROP POLICY IF EXISTS before each CREATE makes the migration safe to
+-- re-run (CREATE POLICY has no IF NOT EXISTS form).
+
 -- anon may read everything (pseudonymous observation data only).
+DROP POLICY IF EXISTS providers_select_anon ON providers;
 CREATE POLICY providers_select_anon ON providers FOR SELECT TO anon USING (true);
+DROP POLICY IF EXISTS events_select_anon ON events;
 CREATE POLICY events_select_anon ON events FOR SELECT TO anon USING (true);
+DROP POLICY IF EXISTS sessions_select_anon ON sessions;
 CREATE POLICY sessions_select_anon ON sessions FOR SELECT TO anon USING (true);
+DROP POLICY IF EXISTS tombstones_select_anon ON tombstones;
 CREATE POLICY tombstones_select_anon ON tombstones FOR SELECT TO anon USING (true);
 
 -- events: INSERT only. There is deliberately NO UPDATE and NO DELETE policy
 -- for anon on events — the event log is append-only.
+DROP POLICY IF EXISTS events_insert_anon ON events;
 CREATE POLICY events_insert_anon ON events FOR INSERT TO anon WITH CHECK (true);
 
 -- tombstones: INSERT only — undo is an appended tombstone row, never a
 -- mutation of the underlying event.
+DROP POLICY IF EXISTS tombstones_insert_anon ON tombstones;
 CREATE POLICY tombstones_insert_anon ON tombstones FOR INSERT TO anon WITH CHECK (true);
 
 -- providers: anon may INSERT and UPDATE (add/rename/hide/reorder from the
 -- app settings screen) but has NO DELETE policy.
+DROP POLICY IF EXISTS providers_insert_anon ON providers;
 CREATE POLICY providers_insert_anon ON providers FOR INSERT TO anon WITH CHECK (true);
+DROP POLICY IF EXISTS providers_update_anon ON providers;
 CREATE POLICY providers_update_anon ON providers FOR UPDATE TO anon USING (true) WITH CHECK (true);
+-- RS-04: a COLUMN-LEVEL grant limits anon UPDATE to the mutable fields; the
+-- primary key `id` and `is_permanent` can never be rewritten by anon (the
+-- permanent-provider trigger is a belt-and-braces second line of defence).
+REVOKE UPDATE ON providers FROM anon;
+GRANT UPDATE (name, sort_order, hidden) ON providers TO anon;
 
 -- sessions: anon may INSERT new sessions; UPDATE is allowed by policy but
 -- restricted by a COLUMN-LEVEL grant to exactly end_ts and end_source, so a
 -- session's identity/start can never be rewritten by the anon role.
+DROP POLICY IF EXISTS sessions_insert_anon ON sessions;
 CREATE POLICY sessions_insert_anon ON sessions FOR INSERT TO anon WITH CHECK (true);
+DROP POLICY IF EXISTS sessions_update_anon ON sessions;
 CREATE POLICY sessions_update_anon ON sessions FOR UPDATE TO anon USING (true) WITH CHECK (true);
 REVOKE UPDATE ON sessions FROM anon;
 GRANT UPDATE (end_ts, end_source) ON sessions TO anon;
@@ -119,13 +139,16 @@ BEGIN
     END IF;
     RETURN OLD;
   END IF;
-  IF OLD.is_permanent AND (NEW.hidden OR NOT NEW.is_permanent) THEN
-    RAISE EXCEPTION 'cannot hide or demote a permanent provider';
+  -- MIG-02: also block PK mutation of a permanent provider (would orphan
+  -- events pointing at the old provider_id).
+  IF OLD.is_permanent AND (NEW.hidden OR NOT NEW.is_permanent OR NEW.id <> OLD.id) THEN
+    RAISE EXCEPTION 'cannot hide, demote, rekey or delete a permanent provider';
   END IF;
   RETURN NEW;
 END;
 $$;
 
+DROP TRIGGER IF EXISTS providers_permanent_guard ON providers;
 CREATE TRIGGER providers_permanent_guard
 BEFORE UPDATE OR DELETE ON providers
 FOR EACH ROW EXECUTE FUNCTION guard_permanent_provider();

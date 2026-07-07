@@ -9,9 +9,17 @@ export const RAW_CSV_HEADER =
 /** Frozen coverage CSV header. */
 export const COVERAGE_CSV_HEADER = 'date,hour,covered,event_count';
 
+/** Leading chars that spreadsheet apps interpret as a formula (CSV injection). */
+const FORMULA_PREFIX_RE = /^[=+\-@\t\r]/;
+
 function csvField(v: string | number | boolean): string {
-  const s = String(v);
-  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  let s = String(v);
+  // RS-01: neutralize formula injection. A field beginning with =,+,-,@,tab or
+  // CR is prefixed with a single quote AND force-quoted so Excel/Sheets treat
+  // it as literal text (provider names are attacker-influenceable via rename).
+  const injectable = FORMULA_PREFIX_RE.test(s);
+  if (injectable) s = `'${s}`;
+  return injectable || /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 export interface CsvInputs {

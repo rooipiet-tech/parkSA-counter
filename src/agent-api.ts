@@ -16,6 +16,11 @@ export interface ParkSaAgentApi {
   setForceOffline(v: boolean): void;
   flush(): Promise<void>;
   exportCsv(range: DateRange): Promise<string>;
+  exportCoverageCsv(range: DateRange): Promise<string>;
+  /** Close a never-ended session with end_source='retroactive' (AC-10). */
+  closeSessionRetroactively(sessionId: string, endTs?: string): Promise<void>;
+  /** Open backend sessions excluding the resumed current one (retro-close candidates). */
+  listOpenSessions(): Promise<Session[]>;
   /** Stub-only fault injection; console.warn no-op on the Supabase adapter. */
   injectFault(n: number): void;
   clearFault(): void;
@@ -53,6 +58,13 @@ export function installAgentApi(ctx: AppCtx): void {
     flush: () => ctx.engine.flushNow(),
 
     exportCsv: (range: DateRange) => ctx.actions.exportRawCsv(range),
+
+    exportCoverageCsv: (range: DateRange) => ctx.actions.exportCoverageCsv(range),
+
+    closeSessionRetroactively: (sessionId: string, endTs?: string) =>
+      ctx.actions.closeSessionRetroactively(sessionId, endTs),
+
+    listOpenSessions: () => ctx.actions.listOpenSessions(),
 
     injectFault(n: number) {
       if (ctx.adapter instanceof StubAdapter) ctx.adapter.injectFaults(n);

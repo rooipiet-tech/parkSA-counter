@@ -51,6 +51,7 @@ export function SessionStartView({ ctx }: { ctx: AppCtx }) {
         <input
           data-testid="location-input"
           type="text"
+          maxLength={40}
           value={location}
           onInput={(e) => setLocation((e.target as HTMLInputElement).value)}
         />

@@ -21,6 +21,26 @@ export class SupabaseAdapter implements BackendAdapter {
     this.client = createClient(url, anonKey);
   }
 
+  /**
+   * PERF-01/RS-03: PostgREST caps a single response at ~1000 rows, silently
+   * truncating large reads. Page through with .range() until a short page is
+   * returned so dashboards/CSV over a seeded month (>1000 events) are complete.
+   */
+  private async selectAll<T>(table: string, orderBy?: string): Promise<T[]> {
+    const PAGE = 1000;
+    const out: T[] = [];
+    for (let offset = 0; ; offset += PAGE) {
+      let q = this.client.from(table).select('*').range(offset, offset + PAGE - 1);
+      if (orderBy) q = q.order(orderBy, { ascending: true });
+      const { data, error } = await q;
+      if (error) throw new Error(`supabase ${table} read: ${error.message}`);
+      const rows = (data ?? []) as T[];
+      out.push(...rows);
+      if (rows.length < PAGE) break;
+    }
+    return out;
+  }
+
   async insertEvents(events: TapEvent[]): Promise<void> {
     if (events.length === 0) return;
     // received_at is stamped by the DB (DEFAULT now()); never sent by the client.
@@ -32,9 +52,7 @@ export class SupabaseAdapter implements BackendAdapter {
   }
 
   async listEvents(): Promise<ServerEvent[]> {
-    const { data, error } = await this.client.from('events').select('*');
-    if (error) throw new Error(`supabase listEvents: ${error.message}`);
-    return (data ?? []) as ServerEvent[];
+    return this.selectAll<ServerEvent>('events');
   }
 
   async insertTombstones(tombstones: Tombstone[]): Promise<void> {
@@ -46,9 +64,7 @@ export class SupabaseAdapter implements BackendAdapter {
   }
 
   async listTombstones(): Promise<Tombstone[]> {
-    const { data, error } = await this.client.from('tombstones').select('*');
-    if (error) throw new Error(`supabase listTombstones: ${error.message}`);
-    return (data ?? []) as Tombstone[];
+    return this.selectAll<Tombstone>('tombstones');
   }
 
   async upsertSession(session: Session): Promise<void> {
@@ -75,9 +91,7 @@ export class SupabaseAdapter implements BackendAdapter {
   }
 
   async listSessions(): Promise<Session[]> {
-    const { data, error } = await this.client.from('sessions').select('*');
-    if (error) throw new Error(`supabase listSessions: ${error.message}`);
-    return (data ?? []) as Session[];
+    return this.selectAll<Session>('sessions');
   }
 
   async listProviders(): Promise<Provider[]> {
@@ -110,8 +124,14 @@ export class SupabaseAdapter implements BackendAdapter {
   }
 
   async reorderProviders(orderedIds: string[]): Promise<void> {
+    // OR-F4: mirror the stub — renumber the FULL list contiguously (listed ids
+    // first in the given order, then any unlisted providers keeping their prior
+    // relative order) so partial-list reorders behave identically both sides.
+    const all = await this.listProviders();
+    const listed = orderedIds.filter((id) => all.some((p) => p.id === id));
+    const rest = all.filter((p) => !listed.includes(p.id)).map((p) => p.id);
     let order = 1;
-    for (const id of orderedIds) {
+    for (const id of [...listed, ...rest]) {
       const { error } = await this.client
         .from('providers')
         .update({ sort_order: order++ })
@@ -120,7 +140,7 @@ export class SupabaseAdapter implements BackendAdapter {
     }
   }
 
-  async deleteProvider(id: string): Promise<void> {
+  async deleteProvider(_id: string): Promise<void> {
     // The anon role has no DELETE policy on providers; refuse client-side too.
     throw new Error('deleting providers is not supported (hide them instead)');
   }

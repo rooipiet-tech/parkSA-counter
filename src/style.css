@@ -14,17 +14,29 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+/* POL-04: no pull-to-refresh / overscroll chaining, no double-tap zoom. */
+html,
+body {
+  overscroll-behavior-y: none;
+}
+
 body {
   margin: 0;
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   background: var(--bg);
   color: var(--fg);
+  touch-action: manipulation;
 }
 
+/* POL-02: shell is a full-height flex column so the counting grid can size to
+   the viewport instead of overflowing below the fold. */
 .app {
   max-width: 900px;
   margin: 0 auto;
   padding: 0.5rem;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
 }
 
 button {
@@ -34,6 +46,7 @@ button {
   border: 1px solid #3a4a5d;
   border-radius: 8px;
   padding: 0.5rem 0.9rem;
+  min-height: 44px; /* POL-06: comfortable touch target */
   cursor: pointer;
 }
 
@@ -95,6 +108,29 @@ label {
   margin: 0.5rem 0;
 }
 
+/* POL-07: compact single-line, dismissable install hint. */
+.hint-compact {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+.hint-compact span {
+  flex: 1;
+}
+
+.hint-dismiss {
+  min-height: 32px;
+  padding: 0.15rem 0.5rem;
+  background: transparent;
+  border: none;
+  color: var(--fg);
+  font-size: 1rem;
+  line-height: 1;
+}
+
 .error {
   color: var(--error);
 }
@@ -113,6 +149,14 @@ label {
   gap: 0.5rem;
 }
 
+/* POL-02: counting screen fills the remaining height below the header. */
+.count-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
 .session-bar {
   display: flex;
   align-items: center;
@@ -121,26 +165,44 @@ label {
   margin: 0.5rem 0;
 }
 
-.tile-grid {
+/* POL-03: End session is pushed to the opposite side from Undo. */
+.session-end-group {
+  margin-left: auto;
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
+  gap: 0.5rem;
+}
+
+.session-end,
+.session-end-confirm {
+  background: #4a2530;
+  border-color: #7a3a48;
+}
+
+/* POL-02: fixed-column grid whose rows share the available height, so all 12
+   tiles fit a 390x844 viewport with no mid-count scrolling. */
+.tile-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-auto-rows: 1fr;
+  gap: 0.5rem;
+  flex: 1;
+  min-height: 0;
 }
 
 .tile {
   background: var(--tile);
   border: 1px solid #34435a;
   border-radius: 12px;
-  min-height: 110px;
-  flex: 1 1 150px;
-  max-width: 240px;
+  min-height: 44px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.4rem;
+  gap: 0.3rem;
   user-select: none;
-  touch-action: manipulation;
+  /* POL-01: the grid fits the viewport, so a touch that starts on a tile must
+     never initiate a scroll (which would fire a phantom-tap pointercancel). */
+  touch-action: none;
 }
 
 .tile.pressed {
