@@ -105,6 +105,13 @@ export function App({ ctx }: { ctx: AppCtx }) {
 
   return (
     <div class="app">
+      {!ctx.storageAvailable && (
+        <div class="warning" data-testid="storage-unavailable" role="alert">
+          Offline storage is unavailable on this device or browser. Taps are kept in memory for
+          this session only and will be lost if you reload or close the app. Stay online so taps
+          sync to the server.
+        </div>
+      )}
       {showIosHint && (
         <div class="hint hint-compact" data-testid="ios-install-hint">
           <span>

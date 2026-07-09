@@ -45,6 +45,8 @@ export interface AppCtx {
   engine: SyncEngine;
   stores: AppStores;
   bootHadPending: boolean;
+  /** False when IndexedDB was unavailable and the queue is in-memory only. */
+  storageAvailable: boolean;
   pin: string;
   actions: {
     unlock(pin: string): boolean;
@@ -146,6 +148,7 @@ export async function createAppCtx(adapter: BackendAdapter): Promise<AppCtx> {
     engine,
     stores,
     bootHadPending: pendingAtBoot > 0,
+    storageAvailable: queue.persistent,
     pin,
     actions: {
       unlock(entered: string): boolean {
