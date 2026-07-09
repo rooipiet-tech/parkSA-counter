@@ -1,5 +1,12 @@
 import type { IDBPDatabase } from 'idb';
-import { openParkSaDb, createInMemoryDb, DB_NAME, type ParkSaDb } from './db.ts';
+import {
+  openParkSaDb,
+  createInMemoryDb,
+  withIdbTimeout,
+  IDB_OPEN_TIMEOUT_MS,
+  DB_NAME,
+  type ParkSaDb
+} from './db.ts';
 import { newId } from '../lib/ids.ts';
 import type { BackendAdapter } from '../adapters/types.ts';
 import type { LogRow, QueueState, Session, TapDirection, TapEvent } from '../lib/types.ts';
@@ -52,6 +59,8 @@ export class TapQueue {
   }
 
   static async open(opts: TapQueueOptions): Promise<TapQueue> {
+    const timeoutMs = opts.idbTimeoutMs ?? IDB_OPEN_TIMEOUT_MS;
+
     // DEGRADE GRACEFULLY: if IndexedDB open rejects OR HANGS (iOS Safari/WebKit
     // fires neither success nor error — openParkSaDb races it against a
     // timeout), fall back to an in-memory DB so the app still mounts and taps
@@ -59,7 +68,7 @@ export class TapQueue {
     let db: IDBPDatabase<ParkSaDb>;
     let persistent = true;
     try {
-      db = await openParkSaDb(opts.dbName ?? DB_NAME, opts.idbTimeoutMs);
+      db = await openParkSaDb(opts.dbName ?? DB_NAME, timeoutMs);
     } catch (err) {
       console.error(
         'IndexedDB unavailable; falling back to in-memory queue (persistence off).',
@@ -70,19 +79,60 @@ export class TapQueue {
     }
     const q = new TapQueue(db, opts);
     q.persistent = persistent;
+
+    // Restore the mirrored current session — but TIMEOUT-GUARD the reads. On
+    // iOS Safari/WebKit the open can SUCCEED yet the FIRST read transaction
+    // HANGS (fires no callback), and a try/catch cannot rescue a hang: the
+    // await would never settle and boot() would stall forever on "Loading…".
+    // So we RACE the restore reads against the same timeout. On a hang/failure
+    // we do NOT keep using the real DB (the next op — e.g. a tap write — would
+    // hang on the same broken connection); we ABANDON it for a fresh in-memory
+    // DB so NOTHING downstream can hang. This covers both the open AND the
+    // initial reads.
     try {
-      const session = (await db.get('meta', 'currentSession')) as Session | undefined;
-      const seq = (await db.get('meta', 'seq')) as number | undefined;
-      q.seq = seq ?? 0;
-      if (session && session.end_ts == null) {
-        // F10: reload RESUMES the mirrored current session.
-        q.session = session;
-        const rows = await db.getAllFromIndex('sessionLog', 'by-session', session.id);
-        q.mirror = rows.sort((a, b) => a.seq - b.seq);
+      const restored = await withIdbTimeout(
+        async () => {
+          const session = (await db.get('meta', 'currentSession')) as Session | undefined;
+          const seq = (await db.get('meta', 'seq')) as number | undefined;
+          let mirror: LogRow[] = [];
+          if (session && session.end_ts == null) {
+            // F10: reload RESUMES the mirrored current session.
+            const rows = await db.getAllFromIndex('sessionLog', 'by-session', session.id);
+            mirror = rows.sort((a, b) => a.seq - b.seq);
+          }
+          return { session, seq, mirror };
+        },
+        timeoutMs,
+        // The reads may settle LATE (after we already abandoned the DB). Swallow
+        // it so it neither throws an unhandled rejection nor clobbers our state.
+        () => {}
+      );
+      q.seq = restored.seq ?? 0;
+      if (restored.session && restored.session.end_ts == null) {
+        q.session = restored.session;
+        q.mirror = restored.mirror;
       }
     } catch (err) {
-      // A DB that opened but then rejects reads is still degraded — keep booting.
-      console.error('Failed to read persisted queue state; starting empty.', err);
+      // Open succeeded but a read HUNG or threw: the connection is unusable.
+      // Abandon it for a full in-memory DB so no later op can hang, and boot
+      // continues (empty — a fresh in-memory DB has nothing to restore).
+      console.error(
+        'Persisted queue read hung or failed; abandoning IndexedDB for an in-memory queue (persistence off).',
+        err
+      );
+      if (persistent) {
+        try {
+          db.close();
+        } catch {
+          /* ignore: closing a hung connection is best-effort */
+        }
+      }
+      db = createInMemoryDb();
+      q.db = db;
+      q.persistent = false;
+      q.seq = 0;
+      q.session = null;
+      q.mirror = [];
     }
     return q;
   }
