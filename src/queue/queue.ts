@@ -9,6 +9,12 @@ export interface TapQueueOptions {
   /** True when taps must be flagged synced_offline (computed at enqueue). */
   isOffline: () => boolean;
   now?: () => number;
+  /**
+   * IndexedDB open timeout. A HANG (iOS Safari/WebKit fires neither success nor
+   * error) counts as failure so the in-memory fallback engages. Injectable so
+   * tests can drive the hang path fast without waiting the real default.
+   */
+  idbTimeoutMs?: number;
 }
 
 const CLOCK_SKEW_LIMIT_MS = 120_000; // DC-08: |skew| > 120s => clock_suspect
@@ -46,13 +52,14 @@ export class TapQueue {
   }
 
   static async open(opts: TapQueueOptions): Promise<TapQueue> {
-    // DEGRADE GRACEFULLY: if IndexedDB open rejects (e.g. Safari/WebKit blocking
-    // storage), fall back to an in-memory DB so the app still mounts and taps
+    // DEGRADE GRACEFULLY: if IndexedDB open rejects OR HANGS (iOS Safari/WebKit
+    // fires neither success nor error — openParkSaDb races it against a
+    // timeout), fall back to an in-memory DB so the app still mounts and taps
     // work for the session, mirroring the guarded pattern in countPendingEvents.
     let db: IDBPDatabase<ParkSaDb>;
     let persistent = true;
     try {
-      db = await openParkSaDb(opts.dbName ?? DB_NAME);
+      db = await openParkSaDb(opts.dbName ?? DB_NAME, opts.idbTimeoutMs);
     } catch (err) {
       console.error(
         'IndexedDB unavailable; falling back to in-memory queue (persistence off).',

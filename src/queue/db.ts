@@ -19,17 +19,97 @@ export interface ParkSaDb extends DBSchema {
 
 export const DB_NAME = 'parksa';
 
-export function openParkSaDb(name: string = DB_NAME): Promise<IDBPDatabase<ParkSaDb>> {
-  return openDB<ParkSaDb>(name, 1, {
-    upgrade(db) {
-      db.createObjectStore('pendingEvents', { keyPath: 'id' });
-      db.createObjectStore('pendingTombstones', { keyPath: 'event_id' });
-      db.createObjectStore('pendingSessions', { keyPath: 'id' });
-      const log = db.createObjectStore('sessionLog', { keyPath: 'id' });
-      log.createIndex('by-session', 'session_id');
-      db.createObjectStore('meta');
-    }
+/**
+ * Max time to wait for an IndexedDB open (or any boot-path IDB call) before we
+ * treat it as a failure. iOS Safari / WebKit (notably Private Browsing) has a
+ * long-standing bug where `indexedDB.open()` HANGS: it fires neither `success`
+ * nor `error`, so a plain `await openDB(...)` never settles and boot() blanks
+ * the page. Racing every boot-path IDB call against this timeout turns a hang
+ * into a rejection, so the existing in-memory fallback engages.
+ */
+export const IDB_OPEN_TIMEOUT_MS = 3000;
+
+/**
+ * Race a promise-producing IDB call against a timeout. On timeout we reject so
+ * the caller can fall back. A late settlement (the real open eventually
+ * resolves AFTER we gave up — common on iOS once the tab regains focus) is
+ * swallowed via `onLateResolve` so it neither throws an unhandled rejection nor
+ * clobbers the in-memory state we already committed to.
+ */
+export function withIdbTimeout<T>(
+  factory: () => Promise<T>,
+  timeoutMs: number,
+  onLateResolve?: (value: T) => void
+): Promise<T> {
+  const pending = factory();
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error(`IndexedDB operation timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+    pending.then(
+      (value) => {
+        if (settled) {
+          // We already timed out; swallow the late success (and let the caller
+          // release any resource it opened) rather than resolving twice.
+          onLateResolve?.(value);
+          return;
+        }
+        settled = true;
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        if (settled) return; // late rejection after timeout: swallow.
+        settled = true;
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
   });
+}
+
+export function openParkSaDb(
+  name: string = DB_NAME,
+  timeoutMs: number = IDB_OPEN_TIMEOUT_MS
+): Promise<IDBPDatabase<ParkSaDb>> {
+  return withIdbTimeout(
+    () =>
+      openDB<ParkSaDb>(name, 1, {
+        upgrade(db) {
+          db.createObjectStore('pendingEvents', { keyPath: 'id' });
+          db.createObjectStore('pendingTombstones', { keyPath: 'event_id' });
+          db.createObjectStore('pendingSessions', { keyPath: 'id' });
+          const log = db.createObjectStore('sessionLog', { keyPath: 'id' });
+          log.createIndex('by-session', 'session_id');
+          db.createObjectStore('meta');
+        },
+        // If another tab holds an older connection, the open stays blocked and
+        // its promise never resolves — the timeout above covers that hang.
+        blocked() {
+          /* covered by timeout */
+        },
+        // A newer version elsewhere wants to upgrade: close so we don't block it.
+        blocking() {
+          /* covered by timeout */
+        },
+        terminated() {
+          /* connection lost; a later call will reopen */
+        }
+      }),
+    timeoutMs,
+    // Late open after we already fell back to in-memory: close it so the
+    // connection does not linger (and can't block a future upgrade).
+    (db) => {
+      try {
+        db.close();
+      } catch {
+        /* ignore */
+      }
+    }
+  );
 }
 
 /**
@@ -37,24 +117,42 @@ export function openParkSaDb(name: string = DB_NAME): Promise<IDBPDatabase<ParkS
  * the `?fresh=1` guard (RS-02) to refuse a destructive wipe that would drop
  * unsynced taps. Returns 0 if the database does not yet exist.
  */
-export async function countPendingEvents(name: string = DB_NAME): Promise<number> {
+export async function countPendingEvents(
+  name: string = DB_NAME,
+  timeoutMs: number = IDB_OPEN_TIMEOUT_MS
+): Promise<number> {
   try {
-    const db = await openParkSaDb(name);
-    const n = await db.count('pendingEvents');
-    db.close();
-    return n;
+    // Timeout-guard the WHOLE read (open + count): on iOS a hang here must not
+    // stall the ?fresh=1 guard. Treat a hang/failure as "no pending" so boot
+    // continues (the destructive-wipe guard errs safe elsewhere).
+    return await withIdbTimeout(async () => {
+      const db = await openParkSaDb(name, timeoutMs);
+      const n = await db.count('pendingEvents');
+      db.close();
+      return n;
+    }, timeoutMs);
   } catch {
     return 0;
   }
 }
 
-export function deleteParkSaDb(name: string = DB_NAME): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.deleteDatabase(name);
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
-    req.onblocked = () => resolve();
-  });
+export function deleteParkSaDb(
+  name: string = DB_NAME,
+  timeoutMs: number = IDB_OPEN_TIMEOUT_MS
+): Promise<void> {
+  // Timeout-guard the wipe: `deleteDatabase` can stay `blocked` forever if any
+  // connection is open (iOS again). On timeout we reject; the ?fresh=1 caller
+  // already swallows that and skips the wipe rather than blanking on boot.
+  return withIdbTimeout(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        const req = indexedDB.deleteDatabase(name);
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+        req.onblocked = () => resolve();
+      }),
+    timeoutMs
+  );
 }
 
 /**
