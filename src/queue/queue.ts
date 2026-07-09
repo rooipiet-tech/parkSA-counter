@@ -1,5 +1,5 @@
 import type { IDBPDatabase } from 'idb';
-import { openParkSaDb, DB_NAME, type ParkSaDb } from './db.ts';
+import { openParkSaDb, createInMemoryDb, DB_NAME, type ParkSaDb } from './db.ts';
 import { newId } from '../lib/ids.ts';
 import type { BackendAdapter } from '../adapters/types.ts';
 import type { LogRow, QueueState, Session, TapDirection, TapEvent } from '../lib/types.ts';
@@ -33,6 +33,12 @@ export class TapQueue {
   private listeners = new Set<() => void>();
   private flushing: Promise<void> | null = null;
   private writeChain: Promise<unknown> = Promise.resolve();
+  /**
+   * False when IndexedDB was unavailable and we fell back to an in-memory
+   * store. Taps still work for the session but are not persisted across reload;
+   * the UI surfaces a non-blocking notice so the operator knows.
+   */
+  persistent = true;
 
   private constructor(db: IDBPDatabase<ParkSaDb>, opts: TapQueueOptions) {
     this.db = db;
@@ -40,16 +46,36 @@ export class TapQueue {
   }
 
   static async open(opts: TapQueueOptions): Promise<TapQueue> {
-    const db = await openParkSaDb(opts.dbName ?? DB_NAME);
+    // DEGRADE GRACEFULLY: if IndexedDB open rejects (e.g. Safari/WebKit blocking
+    // storage), fall back to an in-memory DB so the app still mounts and taps
+    // work for the session, mirroring the guarded pattern in countPendingEvents.
+    let db: IDBPDatabase<ParkSaDb>;
+    let persistent = true;
+    try {
+      db = await openParkSaDb(opts.dbName ?? DB_NAME);
+    } catch (err) {
+      console.error(
+        'IndexedDB unavailable; falling back to in-memory queue (persistence off).',
+        err
+      );
+      db = createInMemoryDb();
+      persistent = false;
+    }
     const q = new TapQueue(db, opts);
-    const session = (await db.get('meta', 'currentSession')) as Session | undefined;
-    const seq = (await db.get('meta', 'seq')) as number | undefined;
-    q.seq = seq ?? 0;
-    if (session && session.end_ts == null) {
-      // F10: reload RESUMES the mirrored current session.
-      q.session = session;
-      const rows = await db.getAllFromIndex('sessionLog', 'by-session', session.id);
-      q.mirror = rows.sort((a, b) => a.seq - b.seq);
+    q.persistent = persistent;
+    try {
+      const session = (await db.get('meta', 'currentSession')) as Session | undefined;
+      const seq = (await db.get('meta', 'seq')) as number | undefined;
+      q.seq = seq ?? 0;
+      if (session && session.end_ts == null) {
+        // F10: reload RESUMES the mirrored current session.
+        q.session = session;
+        const rows = await db.getAllFromIndex('sessionLog', 'by-session', session.id);
+        q.mirror = rows.sort((a, b) => a.seq - b.seq);
+      }
+    } catch (err) {
+      // A DB that opened but then rejects reads is still degraded — keep booting.
+      console.error('Failed to read persisted queue state; starting empty.', err);
     }
     return q;
   }

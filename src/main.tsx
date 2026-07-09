@@ -7,6 +7,7 @@ import { countPendingEvents, deleteParkSaDb } from './queue/db.ts';
 import { createAppCtx } from './app-context.ts';
 import { installAgentApi } from './agent-api.ts';
 import { App } from './views/app.tsx';
+import { BootError, ErrorBoundary } from './views/boot-error.tsx';
 import './style.css';
 
 function InsecureWarning() {
@@ -40,7 +41,11 @@ async function boot() {
       } catch {
         /* ignore */
       }
-      await deleteParkSaDb();
+      try {
+        await deleteParkSaDb();
+      } catch {
+        /* ignore: never let a storage wipe failure blank the app */
+      }
     } else {
       console.warn(
         `?fresh=1 ignored: ${pending} unsynced tap(s) would be lost. Add &force=1 to wipe anyway.`
@@ -73,10 +78,27 @@ async function boot() {
     /* ignore */
   }
 
-  render(<App ctx={ctx} />, root);
+  render(
+    <ErrorBoundary>
+      <App ctx={ctx} />
+    </ErrorBoundary>,
+    root
+  );
   ctx.engine.start();
 
   registerSW({ immediate: true });
 }
 
-void boot();
+// Never blank on boot failure: any pre-render rejection renders a visible,
+// self-diagnosing error surface into #root instead of leaving it empty (the
+// iOS Safari symptom).
+boot().catch((err) => {
+  console.error('Boot failed:', err);
+  try {
+    const root = document.getElementById('root');
+    if (root) render(<BootError error={err} />, root);
+  } catch (renderErr) {
+    // Absolute last resort: never throw out of the boot handler.
+    console.error('Failed to render boot error surface:', renderErr);
+  }
+});
