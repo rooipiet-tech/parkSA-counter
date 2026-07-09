@@ -10,6 +10,27 @@ import { App } from './views/app.tsx';
 import { BootError, ErrorBoundary } from './views/boot-error.tsx';
 import './style.css';
 
+/**
+ * Minimal placeholder rendered SYNCHRONOUSLY into #root before boot() runs, so
+ * the user sees something immediately instead of a blank page during the async
+ * boot (which on iOS can spend up to the IDB open timeout before degrading).
+ * boot() then replaces it with the app, the degraded in-memory app, the insecure
+ * warning, or the BootError surface. Styled inline (dark bg, centred) so it
+ * shows even if the stylesheet has not loaded yet.
+ */
+function LoadingPlaceholder() {
+  return (
+    <div
+      data-testid="loading-placeholder"
+      role="status"
+      aria-live="polite"
+      style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#101418;color:#8a97a5;font-family:system-ui,sans-serif;font-size:1rem;"
+    >
+      Loading…
+    </div>
+  );
+}
+
 function InsecureWarning() {
   return (
     <div class="insecure" data-testid="insecure-context-warning" role="alert">
@@ -87,6 +108,15 @@ async function boot() {
   ctx.engine.start();
 
   registerSW({ immediate: true });
+}
+
+// Show SOMETHING immediately: render the placeholder synchronously before the
+// async boot starts, so #root is never blank while boot() awaits IndexedDB.
+try {
+  const root = document.getElementById('root');
+  if (root) render(<LoadingPlaceholder />, root);
+} catch {
+  /* ignore: boot() below still renders the real UI or an error surface */
 }
 
 // Never blank on boot failure: any pre-render rejection renders a visible,
